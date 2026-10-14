@@ -1,0 +1,14 @@
+.work/
+.pio/
+__pycache__/
+*.pyc
+captures/
+private/
+*.pcap
+*.pcapng
+*.bin
+*.elf
+*.map
+*.log
+.env
+.env.*

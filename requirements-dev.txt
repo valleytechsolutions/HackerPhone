@@ -1,0 +1,4 @@
+pioarduino==6.2.0
+ziglang==0.13.0
+Pillow==12.3.0
+pyserial==3.5

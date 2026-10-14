@@ -1,0 +1,488 @@
+{
+  "reference": "justcallmekoko/ESP32Marauder",
+  "commit": "d3ceb28afeda1196ca27c13adeaa69ada52383f3",
+  "meaning": "Inventory only; no full-parity or hardware-validation claim. Numeric modes are upstream identifiers, not our dispatch API.",
+  "modes": [
+    {
+      "mode": "OTA_UPDATE",
+      "upstream_value": 100,
+      "status": "not_ported"
+    },
+    {
+      "mode": "SHOW_INFO",
+      "upstream_value": 101,
+      "status": "not_ported"
+    },
+    {
+      "mode": "ESP_UPDATE",
+      "upstream_value": 102,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_OFF",
+      "upstream_value": 0,
+      "status": "independent_subset_implemented",
+      "implementation": "stop_all_radio_tools"
+    },
+    {
+      "mode": "WIFI_SCAN_PROBE",
+      "upstream_value": 1,
+      "status": "independent_subset_implemented",
+      "implementation": "probe_request_view"
+    },
+    {
+      "mode": "WIFI_SCAN_AP",
+      "upstream_value": 2,
+      "status": "independent_subset_implemented",
+      "implementation": "access_point_view"
+    },
+    {
+      "mode": "WIFI_SCAN_PWN",
+      "upstream_value": 3,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "WIFI_SCAN_EAPOL",
+      "upstream_value": 4,
+      "status": "independent_subset_implemented",
+      "implementation": "passive_eapol_counter_and_filtered_pcap"
+    },
+    {
+      "mode": "WIFI_SCAN_DEAUTH",
+      "upstream_value": 5,
+      "status": "independent_subset_implemented",
+      "implementation": "passive_disconnect_burst_monitor"
+    },
+    {
+      "mode": "WIFI_SCAN_ALL",
+      "upstream_value": 6,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "WIFI_PACKET_MONITOR",
+      "upstream_value": 7,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_BEACON_SPAM",
+      "upstream_value": 8,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_RICK_ROLL",
+      "upstream_value": 9,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_ALL",
+      "upstream_value": 10,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "BT_SCAN_SKIMMERS",
+      "upstream_value": 11,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_ESPRESSIF",
+      "upstream_value": 12,
+      "status": "not_ported"
+    },
+    {
+      "mode": "LV_JOIN_WIFI",
+      "upstream_value": 13,
+      "status": "not_ported"
+    },
+    {
+      "mode": "LV_ADD_SSID",
+      "upstream_value": 14,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_BEACON_LIST",
+      "upstream_value": 15,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_TARGET_AP",
+      "upstream_value": 16,
+      "status": "not_ported"
+    },
+    {
+      "mode": "LV_SELECT_AP",
+      "upstream_value": 17,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_AUTH",
+      "upstream_value": 18,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_MIMIC",
+      "upstream_value": 19,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_DEAUTH",
+      "upstream_value": 20,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_AP_SPAM",
+      "upstream_value": 21,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_TARGET_AP_FULL",
+      "upstream_value": 22,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_ACTIVE_EAPOL",
+      "upstream_value": 23,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_DEAUTH_MANUAL",
+      "upstream_value": 24,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_RAW_CAPTURE",
+      "upstream_value": 25,
+      "status": "independent_subset_implemented",
+      "implementation": "buffered_1024_byte_snaplen_pcap"
+    },
+    {
+      "mode": "WIFI_SCAN_STATION",
+      "upstream_value": 26,
+      "status": "independent_subset_implemented",
+      "implementation": "transmitting_station_view"
+    },
+    {
+      "mode": "WIFI_ATTACK_DEAUTH_TARGETED",
+      "upstream_value": 27,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_ACTIVE_LIST_EAPOL",
+      "upstream_value": 28,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_SIG_STREN",
+      "upstream_value": 29,
+      "status": "independent_subset_implemented",
+      "implementation": "selected_wifi_channel_and_rssi_history"
+    },
+    {
+      "mode": "WIFI_SCAN_EVIL_PORTAL",
+      "upstream_value": 30,
+      "status": "independent_subset_implemented",
+      "implementation": "ssid_security_mismatch_evidence_only"
+    },
+    {
+      "mode": "WIFI_SCAN_GPS_DATA",
+      "upstream_value": 31,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_WAR_DRIVE",
+      "upstream_value": 32,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_STATION_WAR_DRIVE",
+      "upstream_value": 33,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_WAR_DRIVE",
+      "upstream_value": 34,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_WAR_DRIVE_CONT",
+      "upstream_value": 35,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_SOUR_APPLE",
+      "upstream_value": 36,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_SWIFTPAIR_SPAM",
+      "upstream_value": 37,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_SPAM_ALL",
+      "upstream_value": 38,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_SAMSUNG_SPAM",
+      "upstream_value": 39,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_GPS_NMEA",
+      "upstream_value": 40,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_GOOGLE_SPAM",
+      "upstream_value": 41,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_FLIPPER_SPAM",
+      "upstream_value": 42,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_AIRTAG",
+      "upstream_value": 43,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "BT_SPOOF_AIRTAG",
+      "upstream_value": 44,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_FLIPPER",
+      "upstream_value": 45,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "WIFI_SCAN_CHAN_ANALYZER",
+      "upstream_value": 46,
+      "status": "independent_subset_implemented",
+      "implementation": "frames_per_listening_second"
+    },
+    {
+      "mode": "BT_SCAN_ANALYZER",
+      "upstream_value": 47,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_PACKET_RATE",
+      "upstream_value": 48,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_AP_STA",
+      "upstream_value": 49,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_PINESCAN",
+      "upstream_value": 50,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "WIFI_SCAN_MULTISSID",
+      "upstream_value": 51,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_CONNECTED",
+      "upstream_value": 52,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_PING_SCAN",
+      "upstream_value": 53,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_PORT_SCAN_ALL",
+      "upstream_value": 54,
+      "status": "not_ported"
+    },
+    {
+      "mode": "GPS_TRACKER",
+      "upstream_value": 55,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_BAD_MSG",
+      "upstream_value": 56,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_BAD_MSG_TARGETED",
+      "upstream_value": 57,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_TELNET",
+      "upstream_value": 58,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_SSH",
+      "upstream_value": 59,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ARP_SCAN",
+      "upstream_value": 60,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_SLEEP",
+      "upstream_value": 61,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_SLEEP_TARGETED",
+      "upstream_value": 62,
+      "status": "not_ported"
+    },
+    {
+      "mode": "GPS_POI",
+      "upstream_value": 63,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_DNS",
+      "upstream_value": 64,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_HTTP",
+      "upstream_value": 65,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_HTTPS",
+      "upstream_value": 66,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_SMTP",
+      "upstream_value": 67,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_RDP",
+      "upstream_value": 68,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_HOSTSPOT",
+      "upstream_value": 69,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_AIRTAG_MON",
+      "upstream_value": 70,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_CHAN_ACT",
+      "upstream_value": 71,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_FLOCK",
+      "upstream_value": 72,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "BT_SCAN_SIMPLE",
+      "upstream_value": 73,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_SIMPLE_TWO",
+      "upstream_value": 74,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_FLOCK_WARDRIVE",
+      "upstream_value": 75,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_DETECT_FOLLOW",
+      "upstream_value": 76,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_SAE_COMMIT",
+      "upstream_value": 77,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_SAE_COMMIT",
+      "upstream_value": 78,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_CSA",
+      "upstream_value": 79,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_QUIET",
+      "upstream_value": 80,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_RAYBAN",
+      "upstream_value": 81,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "BT_ATTACK_APPLE_JUICE",
+      "upstream_value": 82,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_SCAN_DISPLAY_AP_INFO",
+      "upstream_value": 83,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_SCAN_FOX_HUNT",
+      "upstream_value": 84,
+      "status": "independent_subset_implemented",
+      "implementation": "selected_ble_address_and_rssi_history"
+    },
+    {
+      "mode": "BT_SCAN_IBEACON",
+      "upstream_value": 85,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "BT_FINDMY_SOUND",
+      "upstream_value": 85,
+      "status": "not_ported"
+    },
+    {
+      "mode": "BT_ATTACK_FINDMY_LIVE",
+      "upstream_value": 86,
+      "status": "not_ported"
+    },
+    {
+      "mode": "REMOTE_ID_SCAN_ALL",
+      "upstream_value": 87,
+      "status": "partial_independent_recon_baseline"
+    },
+    {
+      "mode": "REMOTE_ID_SCAN_TARGET",
+      "upstream_value": 88,
+      "status": "not_ported"
+    },
+    {
+      "mode": "WIFI_ATTACK_FUNNY_BEACON",
+      "upstream_value": 99,
+      "status": "not_ported"
+    }
+  ]
+}

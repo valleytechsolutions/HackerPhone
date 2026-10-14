@@ -1,0 +1,7 @@
+# Same offsets and sizes as this engineering sample's saved partition table.
+# App-only development flashing preserves all NVS, SPIFFS and SD contents.
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x2e0000,
+spiffs,   data, spiffs,  0x2f0000, 0x100000,
+coredump, data, coredump,0x3f0000, 0x10000,
