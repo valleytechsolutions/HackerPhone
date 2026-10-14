@@ -4,6 +4,10 @@ Independent MIT firmware for the owner's CircuitMess **MakerPhone 2 / MP24 engin
 
 The original 4 MB flash has been saved privately before any replacement. This board has an ESP32-S3, 2 MB quad PSRAM, a 160×128 ST7735 panel, 23 keys, a Quectel EG91-NAX modem, and a working SD card under its original firmware. Original Ringo firmware targets different hardware.
 
+<p><img src="docs/images/home-vts.png" width="320" alt="HackerPhone home with the VTS wallpaper"> <img src="docs/images/settings-green.png" width="320" alt="Green Radar theme and recon settings"></p>
+
+Actual 160×128 framebuffer captures from the engineering sample, displayed at 2× size.
+
 ## Current engineering build: 0.2
 
 - Nonblocking, bounded phone service: SIM and registration status, incoming call events, validated dial commands, SMS-submit encoding, command timeouts, and no automatic message retries.
