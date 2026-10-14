@@ -17,8 +17,11 @@ Identified on 2026-10-14. The owner confirms MakerPhone 2.0 engineering hardware
 | Modem UART | UART1 115200 8N1, TX 17, RX 18, no CTS/RTS | UART configuration in saved app |
 | Modem control | GPIO12 power-key inverting driver (2.5 s HIGH pulse); GPIO16 reset inverting driver (LOW released); GPIO11 sleep/wake | Factory control routine and diagnostic text |
 | Power button | GPIO2, active HIGH, external divider, no internal pulls | Factory boot log |
+| IR expansion module | RX GPIO42 with pull-up; TX GPIO45 inverted, idle HIGH; factory carrier 38 kHz | Factory module identification (`0xff13`) and its receiver/LEDC initialization |
 
 These are recovered hardware assignments, not copied vendor application routines. A new adapter implements them using public peripheral APIs. The full engineering firmware and disassembly remain private and are not redistributed or assigned an open-source license.
+
+The IR adapter uses ESP-IDF RMT capture/transmission with hardware carrier removal for the raw photodiode. Its receive polarity and optical performance still require testing with a physical remote. The selected carrier is an assumption for learning, not a frequency measurement. No module-slot power or identification-expander registers are guessed or written. IR is initialized only when recording or transmitting.
 
 Key mapping: digit 0–9, `*`, `#`, A/B/C/D, joystick up/down/left/right/click, volume up/down. The native scan service debounces 25 ms while polling at 100 Hz and buffers simultaneous new presses. No guesses from original Ringo are used.
 

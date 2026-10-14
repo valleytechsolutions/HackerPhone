@@ -1,6 +1,7 @@
 #include "lab_tools.h"
 #include "radio_service.h"
 #include "ble_explorer.h"
+#include "attack_service.h"
 #include <Arduino.h>
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
@@ -10,6 +11,7 @@ static uint8_t frame[96];static size_t frameLength=0;static uint32_t lastTx=0;
 bool labStart(LabMode mode,uint8_t channel,const uint8_t* advert,size_t n){
   if(mode==LabMode::Off||gattStatus().connected||gattStatus().busy)return false;
   if(mode==LabMode::BleReplay&&!validLegacyAdvert(advert,n))return false;
+  attackStop();
   if(!radioPrepare())return false;radioStop();labStop();
   lab={};lab.started=millis();lastTx=lab.started;
   if(mode==LabMode::WifiBeacon){

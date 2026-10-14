@@ -4,6 +4,8 @@
 #include "vendor_db.h"
 #include "lab_tools.h"
 #include <assert.h>
+#include "attack_frames.h"
+#include "ir_format.h"
 #include <string>
 #include <vector>
 #include <stdio.h>
@@ -149,5 +151,56 @@ int main(){
     for(unsigned k=0;k<12;++k){key.mac[5]=k;result=burst.observe(key,1,k,1000+k);}
     assert(result.alert&&result.addresses==12);result=burst.observe(key,1,11,1013);assert(!result.alert);++groups;
   }
-  printf("PASS %u test groups: phone, SMS, recon, storage, vendor DB, traffic monitors and lab frame builders; 40,000 malformed/random radio frames\n",groups);
+  {
+    AttackTarget t;const uint8_t ap[]={0x10,0x22,0x33,4,5,6},sta[]={0x12,1,2,3,4,5};
+    memcpy(t.bssid,ap,6);memcpy(t.client,sta,6);t.hasAp=t.hasClient=true;t.channel=1;t.destinationChannel=6;
+    uint8_t entropy[96]{},bytes[258];
+    for(unsigned round=0;round<256;++round){for(unsigned j=0;j<96;++j)entropy[j]=round+j;
+      for(unsigned m=0;m<unsigned(AttackMode::Count);++m){auto mode=AttackMode(m);memset(bytes,0xa5,sizeof(bytes));
+        size_t n=attackDefinitions[m].ble?buildBleAttack(bytes+1,256,mode,entropy):buildWifiAttack(bytes+1,256,mode,t,sta,round,entropy);
+        assert(n&&n<=256&&bytes[0]==0xa5&&bytes[n+1]==0xa5);
+        if(attackDefinitions[m].ble)assert(validLegacyAdvert(bytes+1,n));
+        else{assert(n>=24);assert(bytes[23]==uint8_t(round<<4));}
+        memset(bytes,0xa5,sizeof(bytes));
+        size_t shortResult=attackDefinitions[m].ble?buildBleAttack(bytes+1,n-1,mode,entropy):buildWifiAttack(bytes+1,n-1,mode,t,sta,round,entropy);
+        assert(!shortResult);for(auto c:bytes)assert(c==0xa5);
+      }
+    }
+    assert(!validAttackTarget(AttackMode::Count,t));t.hasAp=false;assert(!validAttackTarget(AttackMode::Deauthentication,t));
+    t.hasAp=true;t.hasClient=false;assert(!validAttackTarget(AttackMode::BadMessage,t));t.hasClient=true;
+    t.client[0]=0xff;assert(!validAttackTarget(AttackMode::BadMessage,t));t.client[0]=0x12;
+    t.destinationChannel=t.channel;assert(!validAttackTarget(AttackMode::ChannelSwitch,t));
+    t.channel=12;assert(!validAttackTarget(AttackMode::Beacon,t));t.channel=1;memset(t.ssid,'x',sizeof(t.ssid));assert(!validAttackTarget(AttackMode::Beacon,t));
+    ++groups;
+  }
+  {
+    struct Input:IrInput{std::string bytes;size_t pos=0;explicit Input(std::string s):bytes(s){}int read()override{return pos<bytes.size()?uint8_t(bytes[pos++]):-1;}};
+    const std::string header="Filetype: IR signals file\nVersion: 1\n# Example remote\n";
+    const std::string raw="name: Power\ntype: raw\nfrequency: 38000\nduty_cycle: 0.33\ndata: 9000 4500 560 560 560 1690 560\n";
+    IrReader reader;IrSignal signal;char error[80];
+    Input good(header+raw+"# Next button\nname: Volume\ntype: parsed\nprotocol: NEC\naddress: 10 00 00 00\ncommand: 34 00 00 00\n");
+    assert(reader.next(good,signal,error,sizeof(error))==IrReadResult::Ready&&signal.count==7&&signal.durations[5]==1690&&!strcmp(signal.name,"Power"));
+    assert(reader.next(good,signal,error,sizeof(error))==IrReadResult::Ready&&signal.count==67&&!strcmp(signal.name,"Volume"));
+    // Decode timings independently to verify the NEC address/command inverse
+    // bytes and their transmitted bit order, rather than testing only sizes.
+    uint32_t bits=0;for(unsigned i=0;i<32;++i){assert(signal.durations[2+i*2]==560);if(signal.durations[3+i*2]>1000)bits|=1u<<i;}
+    assert(bits==0xcb34ef10);assert(validIrSignal(signal));
+    assert(reader.next(good,signal,error,sizeof(error))==IrReadResult::End);
+    for(const auto& bad:{raw,header+"name: X\ntype: raw\nfrequency: 38000\nduty_cycle: nan\ndata: 1 2\n",header+"name: X\ntype: raw\nfrequency: 38000\nduty_cycle: .33\ndata: 0 500\n",header+"name: X\ntype: raw\nfrequency: 38000\nduty_cycle: .33\ndata: 1000001 3\n",header+"name: X\nname: Y\n"}){
+      reader.reset();Input input(bad);assert(reader.next(input,signal,error,sizeof(error))==IrReadResult::Invalid&&signal.count==0);
+    }
+    std::string large=header+"name: Max\ntype: raw\nfrequency: 38000\nduty_cycle: .33\ndata:";for(unsigned i=0;i<1024;++i)large+=" 500";
+    reader.reset();Input max(large+"\n");assert(reader.next(max,signal,error,sizeof(error))==IrReadResult::Ready&&signal.count==1024);
+    reader.reset();Input over(large+" 500\n");assert(reader.next(over,signal,error,sizeof(error))==IrReadResult::Invalid&&signal.count==0);
+    reader.reset();Input budget(header+"name: X\ntype: raw\nfrequency: 38000\nduty_cycle: .33\ndata: 1 2"+std::string(65536,' '));assert(reader.next(budget,signal,error,sizeof(error))==IrReadResult::Invalid);
+    reader.reset();Input unsupported(header+"name: Other\ntype: parsed\nprotocol: Unknown\naddress: 00 00 00 00\ncommand: 00 00 00 00\n"+raw);
+    assert(reader.next(unsupported,signal,error,sizeof(error))==IrReadResult::Unsupported&&signal.count==0);
+    assert(reader.next(unsupported,signal,error,sizeof(error))==IrReadResult::Ready);
+    uint32_t value;assert(parseIrHex32("12 34 56 78",value)&&value==0x78563412);for(auto bad:{"1","12 34","12 34 56 78 90","-1 00 00 00","1234 56 78 90"})assert(!parseIrHex32(bad,value));
+    assert(validIrLibraryPath("/hackerphone/ir/database/Sony TV/Remote 1.ir"));
+    for(auto path:{"/other.ir","/hackerphone/ir/../secret","/hackerphone/ir/","/hackerphone/ir/x//a.ir","/hackerphone/ir/./x.ir","/hackerphone/ir/x\\a.ir","/hackerphone/ir/x\na.ir"})assert(!validIrLibraryPath(path));
+    for(auto protocol:{"NEC","NECext","Samsung32","SIRC","SIRC15"})assert(irEncodeParsed(signal,protocol,1,2)&&validIrSignal(signal));
+    assert(!irEncodeParsed(signal,"NEC",256,1));assert(!irEncodeParsed(signal,"RC6",1,2));++groups;
+  }
+  printf("PASS %u test groups: phone, SMS, recon, storage, vendor DB, traffic, attack frame bounds and IR files; 40,000 malformed/random radio frames\n",groups);
 }

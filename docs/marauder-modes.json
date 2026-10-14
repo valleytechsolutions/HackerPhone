@@ -66,7 +66,8 @@
     {
       "mode": "WIFI_ATTACK_BEACON_SPAM",
       "upstream_value": 8,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "random_ssid_beacons"
     },
     {
       "mode": "WIFI_ATTACK_RICK_ROLL",
@@ -101,7 +102,8 @@
     {
       "mode": "WIFI_ATTACK_BEACON_LIST",
       "upstream_value": 15,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "streamed_sd_ssid_playlist"
     },
     {
       "mode": "WIFI_SCAN_TARGET_AP",
@@ -116,22 +118,26 @@
     {
       "mode": "WIFI_ATTACK_AUTH",
       "upstream_value": 18,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "open_authentication_requests"
     },
     {
       "mode": "WIFI_ATTACK_MIMIC",
       "upstream_value": 19,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "ssid_bssid_mimic_without_original_security_ies"
     },
     {
       "mode": "WIFI_ATTACK_DEAUTH",
       "upstream_value": 20,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_ap_deauth_or_disassociation"
     },
     {
       "mode": "WIFI_ATTACK_AP_SPAM",
       "upstream_value": 21,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "ssid_bssid_mimic_without_original_security_ies"
     },
     {
       "mode": "WIFI_SCAN_TARGET_AP_FULL",
@@ -141,7 +147,8 @@
     {
       "mode": "WIFI_SCAN_ACTIVE_EAPOL",
       "upstream_value": 23,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "deauth_plus_observed_eapol_pcap"
     },
     {
       "mode": "WIFI_ATTACK_DEAUTH_MANUAL",
@@ -163,7 +170,8 @@
     {
       "mode": "WIFI_ATTACK_DEAUTH_TARGETED",
       "upstream_value": 27,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_ap_and_observed_client"
     },
     {
       "mode": "WIFI_SCAN_ACTIVE_LIST_EAPOL",
@@ -210,22 +218,26 @@
     {
       "mode": "BT_ATTACK_SOUR_APPLE",
       "upstream_value": 36,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "sour_apple_advert_builder"
     },
     {
       "mode": "BT_ATTACK_SWIFTPAIR_SPAM",
       "upstream_value": 37,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "swift_pair_advert_builder"
     },
     {
       "mode": "BT_ATTACK_SPAM_ALL",
       "upstream_value": 38,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "mixed_pairing_advert_builders"
     },
     {
       "mode": "BT_ATTACK_SAMSUNG_SPAM",
       "upstream_value": 39,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "samsung_pairing_advert_builder"
     },
     {
       "mode": "WIFI_SCAN_GPS_NMEA",
@@ -235,12 +247,14 @@
     {
       "mode": "BT_ATTACK_GOOGLE_SPAM",
       "upstream_value": 41,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "fast_pair_advert_builder"
     },
     {
       "mode": "BT_ATTACK_FLIPPER_SPAM",
       "upstream_value": 42,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "flipper_advert_builder"
     },
     {
       "mode": "BT_SCAN_AIRTAG",
@@ -311,12 +325,14 @@
     {
       "mode": "WIFI_ATTACK_BAD_MSG",
       "upstream_value": 56,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_client_eapol_message_one"
     },
     {
       "mode": "WIFI_ATTACK_BAD_MSG_TARGETED",
       "upstream_value": 57,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_client_eapol_message_one"
     },
     {
       "mode": "WIFI_SCAN_TELNET",
@@ -336,12 +352,14 @@
     {
       "mode": "WIFI_ATTACK_SLEEP",
       "upstream_value": 61,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_client_association_power_management"
     },
     {
       "mode": "WIFI_ATTACK_SLEEP_TARGETED",
       "upstream_value": 62,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "selected_client_association_power_management"
     },
     {
       "mode": "GPS_POI",
@@ -421,17 +439,20 @@
     {
       "mode": "WIFI_ATTACK_SAE_COMMIT",
       "upstream_value": 78,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "group_19_initial_commit_only_no_token_exchange"
     },
     {
       "mode": "WIFI_ATTACK_CSA",
       "upstream_value": 79,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "reconstructed_beacon_with_csa_ie"
     },
     {
       "mode": "WIFI_ATTACK_QUIET",
       "upstream_value": 80,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "reconstructed_beacon_with_quiet_ie"
     },
     {
       "mode": "BT_SCAN_RAYBAN",
@@ -441,7 +462,8 @@
     {
       "mode": "BT_ATTACK_APPLE_JUICE",
       "upstream_value": 82,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_not_validated",
+      "implementation": "apple_juice_advert_builder"
     },
     {
       "mode": "WIFI_SCAN_DISPLAY_AP_INFO",

@@ -12,16 +12,19 @@
 #include "vendor_db.h"
 #include "ble_explorer.h"
 #include "lab_tools.h"
+#include "attack_service.h"
+#include "ir_service.h"
 
 using namespace hackerphone;
 static mp24::ModemTransport transport;
 static PhoneCore phone(transport);
-enum class Screen {Home,Dial,Messages,Compose,ConfirmSms,Recon,Targets,Hunt,Files,FileView,Settings,Diagnostics,Incoming,Tools,Channels,Alerts,TargetTools,TargetInfo,Gatt,Lab,LabConfirm};
+enum class Screen {Home,Dial,Messages,Compose,ConfirmSms,Recon,Targets,Hunt,Files,FileView,Settings,Diagnostics,Incoming,Tools,Channels,Alerts,TargetTools,TargetInfo,Gatt,Lab,LabConfirm,Attacks,AttackConfirm,AttackRun,Infrared,IrSignal};
 static Screen screen=Screen::Home;
 static int menu=0,targetIndex=0,fileIndex=0,fileCount=0;
 static String recipient,message,dialNumber,currentPath="/",filePreview;
 static String fileNames[32],filePaths[32];static bool fileDirs[32];
 static unsigned filePage=0;static bool fileMore=false;
+static bool irBrowsing=false;
 static String notice;
 static uint32_t noticeAt=0,lastDraw=0,lastSave=0;
 static uint8_t previousDigit=255,tapIndex=0;static uint32_t tapAt=0;
@@ -34,21 +37,23 @@ static unsigned themeIndex=0;
 static const Theme& theme(){return themes[themeIndex];}
 static unsigned targetFilter=0,detailPage=0,gattIndex=0,eventIndex=0;
 static LabMode pendingLab=LabMode::Off;
+static AttackMode pendingAttack=AttackMode::Beacon;
 static char vendorName[48]{};
 static const char* modeName(){return radioMode==RadioMode::Combined?"WiFi + BLE":radioMode==RadioMode::Wifi?"WiFi only":"BLE only";}
 static void setTheme(unsigned index){themeIndex=index%ThemeCount;preferences.putUChar("theme",themeIndex);}
 static bool targetVisible(const Target& t){return t.used&&(targetFilter==0||(targetFilter==1&&!t.ble&&t.accessPoint)||(targetFilter==2&&!t.ble&&t.station)||(targetFilter==3&&!t.ble&&t.probe)||(targetFilter==4&&t.ble));}
 static void cacheVendor(){vendorName[0]=0;auto& t=recon.targets[targetIndex];if(t.used)lookupVendor(t.mac,t.ble,t.addressType,vendorName);}
 static void nextTarget(int step){for(unsigned i=0;i<ReconCore::Capacity;++i){targetIndex=(targetIndex+ReconCore::Capacity+step)%ReconCore::Capacity;if(targetVisible(recon.targets[targetIndex]))break;}recon.pinned=targetVisible(recon.targets[targetIndex])?targetIndex:-1;cacheVendor();}
-static bool startListening(){labStop();auto g=gattStatus();if(g.busy||g.connected){gattStop();return false;}return radioStart();}
-static void stopTools(){labStop();gattStop();radioStop();captureStop();recon.selected=recon.pinned=-1;}
+static bool startListening(){irStop();attackStop();labStop();auto g=gattStatus();if(g.busy||g.connected){gattStop();return false;}return radioStart();}
+static void stopTools(){irStop();attackStop();labStop();gattStop();radioStop();captureStop();recon.selected=recon.pinned=-1;}
+static void openInfrared(){stopTools();if(logging){session.flush();session.close();logging=false;}screen=Screen::Infrared;menu=0;}
 
 static const char* simName(){switch(phone.state().sim){case Sim::Absent:return "NO SIM";case Sim::Ready:return phone.state().registered()?"REGISTERED":"SEARCHING";case Sim::PinRequired:return "SIM PIN";case Sim::PukRequired:return "SIM PUK";case Sim::Fault:return "SIM ERROR";default:return phone.state().online?"CHECKING SIM":"MODEM START";}}
 static void notify(const char* text){notice=text;noticeAt=millis();}
 static uint16_t color(uint32_t c){return mp24::lcd.color565(c>>16,c>>8,c);}
 static void text(int x,int y,const String& s,uint16_t fg=TFT_WHITE){mp24::frame.setTextColor(fg);mp24::frame.drawString(s,x,y,1);}
 static void wrap(int x,int y,const String& s,int width=24,int maxLines=7){for(int line=0;line<maxLines&&size_t(line*width)<s.length();++line)text(x,y+line*10,s.substring(line*width,(line+1)*width));}
-static void header(const char* title){auto& f=mp24::frame;f.fillSprite(theme().background);f.fillRect(0,0,160,15,theme().bar);text(5,4,title);text(5,18,simName(),theme().muted);text(102,18,lab.mode!=LabMode::Off?"TX ACTIVE":storageStatus.recording?"REC PCAP":radioRunning?(radioBle?"BLE RX":"WiFi RX"):"IDLE",storageStatus.recording||lab.mode!=LabMode::Off?TFT_ORANGE:theme().accent);f.drawFastHLine(0,29,160,0x39e7);}
+static void header(const char* title){auto& f=mp24::frame;f.fillSprite(theme().background);f.fillRect(0,0,160,15,theme().bar);text(5,4,title);text(5,18,simName(),theme().muted);text(102,18,attackStatus.active||lab.mode!=LabMode::Off?"TX ACTIVE":storageStatus.recording?"REC PCAP":radioRunning?(radioBle?"BLE RX":"WiFi RX"):"IDLE",storageStatus.recording||attackStatus.active||lab.mode!=LabMode::Off?TFT_ORANGE:theme().accent);f.drawFastHLine(0,29,160,0x39e7);}
 static void footer(const char* help){mp24::frame.fillRect(0,116,160,12,TFT_BLACK);text(3,118,help,theme().muted);}
 static void showResult(Request result){
   const char* names[]={"Request queued","Modem busy","Insert a SIM first","No cellular network","Invalid input","70-character SMS limit","Text not supported yet"};
@@ -106,10 +111,11 @@ static void digitInput(uint8_t digit,uint32_t now){
 }
 static void key(mp24::Key k,uint32_t now){
   if(k==mp24::None)return;
+  if(attackStatus.active&&screen!=Screen::AttackRun)attackStop();
   if(unsigned(k)<=unsigned(mp24::K9)){digitInput(unsigned(k),now);return;}
-  if(k==mp24::C){labStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;return;}
+  if(k==mp24::C){irStop();attackStop();labStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;return;}
   bool accept=k==mp24::A||k==mp24::Enter;
-  if(screen==Screen::Home){if(k==mp24::Down||k==mp24::Right)menu=(menu+1)%6;if(k==mp24::Up||k==mp24::Left)menu=(menu+5)%6;if(accept){switch(menu){case 0:screen=Screen::Dial;break;case 1:screen=Screen::Messages;break;case 2:screen=Screen::Tools;menu=0;break;case 3:screen=Screen::Files;if(mp24::cardReady)files();break;case 4:screen=Screen::Settings;menu=0;break;case 5:screen=Screen::Diagnostics;break;}}return;}
+  if(screen==Screen::Home){if(k==mp24::Down||k==mp24::Right)menu=(menu+1)%7;if(k==mp24::Up||k==mp24::Left)menu=(menu+6)%7;if(accept){switch(menu){case 0:screen=Screen::Dial;break;case 1:screen=Screen::Messages;break;case 2:screen=Screen::Tools;menu=0;break;case 3:openInfrared();break;case 4:screen=Screen::Files;irBrowsing=false;if(mp24::cardReady)files();break;case 5:screen=Screen::Settings;menu=0;break;case 6:screen=Screen::Diagnostics;break;}}return;}
   if(screen==Screen::Incoming){if(accept)notify("Voice audio port pending");if(k==mp24::B)showResult(phone.hangup(now));return;}
   if(screen==Screen::Dial){
     if(k==mp24::Star&&dialNumber.isEmpty())dialNumber="+";
@@ -132,7 +138,7 @@ static void key(mp24::Key k,uint32_t now){
       case 5:radioSetMode(RadioMode::Wifi);if(startListening())screen=Screen::Channels;break;
       case 6:screen=Screen::Alerts;eventIndex=0;break;
       case 7:case 8:if(storageStatus.recording){captureStop();notify("Capture saved");}else if(startListening()&&captureStart(menu==8))notify(menu==8?"Recording EAPOL":"Recording raw WiFi");else notify("Capture needs working SD");break;
-      case 9:screen=Screen::Lab;menu=0;break;
+      case 9:screen=Screen::Attacks;menu=0;break;
       case 10:radioSetMode(RadioMode((unsigned(radioMode)+1)%3));break;
       case 11:stopTools();notify("All radio tools stopped");break;
     }}if(k==mp24::B){screen=Screen::Home;menu=0;}return;
@@ -143,11 +149,13 @@ static void key(mp24::Key k,uint32_t now){
     if(k==mp24::B){screen=Screen::Tools;menu=0;recon.pinned=-1;}return;
   }
   if(screen==Screen::TargetTools){
-    moveMenu(k,5);auto& t=recon.targets[targetIndex];
+    moveMenu(k,7);auto& t=recon.targets[targetIndex];
     if(accept){switch(menu){case 0:recon.selected=targetIndex;screen=Screen::Hunt;break;
-      case 1:labStop();if(t.ble&&t.fresh(now)&&gattConnect(t.mac,t.addressType)){screen=Screen::Gatt;gattIndex=0;}else notify("Choose a live BLE device");break;
+      case 1:attackStop();labStop();if(t.ble&&t.fresh(now)&&gattConnect(t.mac,t.addressType)){screen=Screen::Gatt;gattIndex=0;}else notify("Choose a live BLE device");break;
       case 2:if(t.ble&&validLegacyAdvert(t.advert,t.advertSize)){pendingLab=LabMode::BleReplay;screen=Screen::LabConfirm;}else notify("Needs complete <=31B advert");break;
-      case 3:detailPage=0;screen=Screen::TargetInfo;break;case 4:detailPage=1;screen=Screen::TargetInfo;break;}}
+      case 3:detailPage=0;screen=Screen::TargetInfo;break;case 4:detailPage=1;screen=Screen::TargetInfo;break;
+      case 5:if(attackSelectAp(targetIndex)){screen=Screen::Attacks;menu=0;notify("AP copied to attack target");}else notify("Choose a live WiFi AP");break;
+      case 6:if(attackSelectClient(targetIndex)){screen=Screen::Attacks;menu=0;notify("Client target selected");}else notify("Needs client of chosen AP");break;}}
     if(k==mp24::B)screen=Screen::Targets;return;
   }
   if(screen==Screen::TargetInfo){if(k==mp24::Left||k==mp24::Right)detailPage^=1;if(k==mp24::B)screen=Screen::TargetTools;return;}
@@ -160,13 +168,43 @@ static void key(mp24::Key k,uint32_t now){
     if(k==mp24::Hash)notify(saveGatt()?"GATT tree saved to SD":"SD save failed");
     if(k==mp24::B){gattStop();screen=Screen::TargetTools;}return;
   }
-  if(screen==Screen::Lab){moveMenu(k,3);if(accept){if(menu==2)labStop();else{pendingLab=menu==0?LabMode::WifiBeacon:LabMode::BleBeacon;screen=Screen::LabConfirm;}}if(k==mp24::B){labStop();screen=Screen::Tools;menu=9;}return;}
-  if(screen==Screen::LabConfirm){if(accept){auto& t=recon.targets[targetIndex];bool ok=labStart(pendingLab,channelLock?channelLock:1,t.advert,t.advertSize);screen=Screen::Lab;menu=2;notify(ok?"Transmission started":"Could not start test");}if(k==mp24::B)screen=Screen::Lab;return;}
+  if(screen==Screen::Attacks){
+    constexpr unsigned modes=unsigned(AttackMode::Count);moveMenu(k,modes+2);
+    if(accept){if(unsigned(menu)<modes){pendingAttack=AttackMode(menu);screen=Screen::AttackConfirm;}else if(unsigned(menu)==modes){screen=Screen::Lab;menu=0;}else{attackStop();labStop();notify("Transmission stopped");}}
+    if(k==mp24::B){attackStop();screen=Screen::Tools;menu=9;}return;
+  }
+  if(screen==Screen::AttackConfirm){
+    if(k==mp24::Left)attackOptions.durationSeconds=attackOptions.durationSeconds<=5?60:attackOptions.durationSeconds-5;
+    if(k==mp24::Right)attackOptions.durationSeconds=attackOptions.durationSeconds>=60?5:attackOptions.durationSeconds+5;
+    if(k==mp24::D){auto& rate=attackOptions.packetsPerSecond;rate=rate<10?10:rate<25?25:rate<50?50:rate<100?100:1;}
+    if(accept){if(phone.state().phonePriority())notify("Phone session has priority");else if(attackStart(pendingAttack))screen=Screen::AttackRun;else notify(attackStatus.message);}
+    if(k==mp24::B){screen=Screen::Attacks;menu=unsigned(pendingAttack);}return;
+  }
+  if(screen==Screen::AttackRun){if(k==mp24::B||accept){attackStop();screen=Screen::Attacks;menu=unsigned(pendingAttack);}return;}
+  if(screen==Screen::Lab){moveMenu(k,3);if(accept){if(menu==2)labStop();else{pendingLab=menu==0?LabMode::WifiBeacon:LabMode::BleBeacon;screen=Screen::LabConfirm;}}if(k==mp24::B){labStop();screen=Screen::Attacks;menu=0;}return;}
+  if(screen==Screen::LabConfirm){if(accept){attackStop();auto& t=recon.targets[targetIndex];bool ok=labStart(pendingLab,channelLock?channelLock:1,t.advert,t.advertSize);screen=Screen::Lab;menu=2;notify(ok?"Transmission started":"Could not start test");}if(k==mp24::B)screen=Screen::Lab;return;}
+  if(screen==Screen::Infrared){
+    moveMenu(k,6);
+    if(accept){switch(menu){
+      case 0:if(!phone.state().phonePriority()&&irLearn())screen=Screen::IrSignal;else notify(irStatus.message);break;
+      case 1:if(irDirectories()){irBrowsing=true;currentPath="/hackerphone/ir";filePage=0;files();screen=Screen::Files;}else notify(irStatus.message);break;
+      case 2:screen=Screen::IrSignal;break;
+      case 3:{uint32_t hz=irFrequency();irSetFrequency(hz==36000?38000:hz==38000?40000:hz==40000?56000:36000);break;}
+      case 4:notify(irSave()?"Signal saved on SD":irStatus.message);break;
+      case 5:irStop();break;
+    }}if(k==mp24::B){irStop();screen=Screen::Home;menu=3;}return;
+  }
+  if(screen==Screen::IrSignal){
+    if(k==mp24::B){irStop();screen=Screen::Infrared;menu=0;return;}
+    if(irBusy()){if(accept)irStop();return;}
+    if(accept&&!phone.state().phonePriority())irSend();if(k==mp24::D)irSave();
+    if(k==mp24::Right)irNext();if(k==mp24::Left)irPrevious();return;
+  }
   if(screen==Screen::Files){
     if(k==mp24::Down&&fileCount)fileIndex=(fileIndex+1)%fileCount;if(k==mp24::Up&&fileCount)fileIndex=(fileIndex+fileCount-1)%fileCount;
     if(k==mp24::Left&&filePage){--filePage;files();}if(k==mp24::Right&&fileMore){++filePage;files();}
-    if(k==mp24::B){if(currentPath=="/"){screen=Screen::Home;menu=0;}else{int slash=currentPath.lastIndexOf('/');currentPath=slash<=0?"/":currentPath.substring(0,slash);filePage=0;files();}}
-    if(accept&&fileCount){if(fileDirs[fileIndex]){currentPath=filePaths[fileIndex];filePage=0;files();}else{File file=SD.open(filePaths[fileIndex]);filePreview="";while(file&&file.available()&&filePreview.length()<168){char c=file.read();filePreview+=c>=32&&c<127?c:' ';}file.close();screen=Screen::FileView;}}return;
+    if(k==mp24::B){if(irBrowsing&&currentPath=="/hackerphone/ir"){screen=Screen::Infrared;menu=1;}else if(currentPath=="/"){screen=Screen::Home;menu=0;}else{int slash=currentPath.lastIndexOf('/');currentPath=slash<=0?"/":currentPath.substring(0,slash);filePage=0;files();}}
+    if(accept&&fileCount){if(fileDirs[fileIndex]){currentPath=filePaths[fileIndex];filePage=0;files();}else if(irBrowsing&&fileNames[fileIndex].endsWith(".ir")){irOpen(filePaths[fileIndex].c_str());screen=Screen::IrSignal;}else{File file=SD.open(filePaths[fileIndex]);filePreview="";while(file&&file.available()&&filePreview.length()<168){char c=file.read();filePreview+=c>=32&&c<127?c:' ';}file.close();screen=Screen::FileView;}}return;
   }
   if(screen==Screen::FileView){if(k==mp24::B)screen=Screen::Files;return;}
   if(screen==Screen::Settings){
@@ -182,8 +220,8 @@ static void render(uint32_t now){
   auto& f=mp24::frame;
   if(screen==Screen::Home){
     header("HACKERPHONE");f.setSwapBytes(true);f.pushImage(79,30,vtsWidth,vtsHeight,vtsPixels);
-    static const char* names[]={"Phone","Messages","Security","SD files","Settings","Hardware"};
-    for(int i=0;i<6;++i){if(i==menu)f.fillRoundRect(2,33+i*13,75,12,2,theme().selection);else f.fillRect(2,33+i*13,75,12,theme().background);text(5,35+i*13,names[i]);}
+    static const char* names[]={"Phone","Messages","Security","Infrared","SD files","Settings","Hardware"};
+    for(int row=0,first=menu/6*6;row<6&&first+row<7;++row){int i=first+row;if(i==menu)f.fillRoundRect(2,33+row*13,75,12,2,theme().selection);else f.fillRect(2,33+row*13,75,12,theme().background);text(5,35+row*13,names[i]);}
     footer("A:Open  C:Home");
   }else if(screen==Screen::Dial){header("PHONE");text(5,35,"Number (* for +)",theme().muted);wrap(5,49,dialNumber,24,2);text(5,82,"Voice audio port pending",TFT_ORANGE);text(5,97,"No calls sent by USB tests",TFT_DARKGREY);footer("A:Call  B:Erase  C:Home");}
   else if(screen==Screen::Messages){header("NEW MESSAGE");text(5,35,"To (* for +)",theme().muted);wrap(5,49,recipient,24,2);text(5,87,"Write without a SIM.",theme().muted);text(5,99,"Sending needs service.",theme().muted);footer("A:Write  B:Erase");}
@@ -218,8 +256,8 @@ static void render(uint32_t now){
   }else if(screen==Screen::Files){header("SD FILE BROWSER");text(5,34,mp24::cardReady?currentPath.substring(0,19)+" p"+String(filePage+1):"SD unavailable");int first=(fileIndex/6)*6;for(int row=0;row<6&&first+row<fileCount;++row){int i=first+row;if(i==fileIndex)f.fillRect(1,47+row*11,158,11,theme().selection);text(4,48+row*11,String(fileDirs[i]?"+ ":"  ")+fileNames[i].substring(0,23));}footer("A:Open B:Up L/R:Page");}
   else if(screen==Screen::FileView){header("FILE PREVIEW");wrap(5,35,filePreview);footer("First 168 bytes / B:Back");}
   else if(screen==Screen::Settings){header("SETTINGS");String items[]={String("Theme: ")+theme().name,String("Radio: ")+(radioRunning?"running":"paused"),String("Scan: ")+modeName(),String("Channel: ")+(channelLock?String(channelLock):"hop 1-11"),String("CSV log: ")+(logging?"on":"off"),"Retry modem session"};menuRows(items,6);footer("A:Change  B:Back");}
-  else if(screen==Screen::Tools){header("SECURITY TOOLKIT");String items[]={"RSSI radar","WiFi access points","WiFi stations","Probe requests","BLE devices","Channel analyzer","Traffic alerts",String(storageStatus.recording?"Stop & save PCAP":"Record WiFi PCAP"),"Record EAPOL only","Radio test tools",String("Scan: ")+modeName(),"Stop all radio tools"};menuRows(items,12);footer("Up/Dn A:Open C:Home");}
-  else if(screen==Screen::TargetTools){header("SELECTED DEVICE");String items[]={"Signal fox hunt","Connect / BLE GATT","Replay BLE advert","Detection evidence","Raw advertisement"};menuRows(items,5);footer("A:Open B:Back");}
+  else if(screen==Screen::Tools){header("SECURITY TOOLKIT");String items[]={"RSSI radar","WiFi access points","WiFi stations","Probe requests","BLE devices","Channel analyzer","Traffic alerts",String(storageStatus.recording?"Stop & save PCAP":"Record WiFi PCAP"),"Record EAPOL only","WiFi / BLE attacks",String("Scan: ")+modeName(),"Stop all radio tools"};menuRows(items,12);footer("Up/Dn A:Open C:Home");}
+  else if(screen==Screen::TargetTools){header("SELECTED DEVICE");String items[]={"Signal fox hunt","Connect / BLE GATT","Replay BLE advert","Detection evidence","Raw advertisement","Use as attack AP","Use as attack client"};menuRows(items,7);footer("A:Open B:Back");}
   else if(screen==Screen::TargetInfo){
     header(detailPage?"RAW BLE ADVERTISEMENT":"DETECTION EVIDENCE");auto& t=recon.targets[targetIndex];
     if(!detailPage){text(5,34,confidence(t.match.confidence),theme().accent);wrap(5,47,t.match.evidence,25,4);text(5,91,String("Age ")+(now-t.last)/1000+"s / peak "+t.peak+"dBm",theme().muted);text(5,103,t.signal.quality(),theme().muted);}
@@ -242,10 +280,33 @@ static void render(uint32_t now){
     if(gattRow(gattIndex,row)){text(5,46,String(gattIndex+1)+"/"+g.rows+" handle "+String(row.handle,HEX));text(5,58,String(row.uuid).substring(0,25));text(5,70,String("R:")+bool(row.flags&1)+" W:"+bool(row.flags&2)+" N:"+bool(row.flags&4)+" I:"+bool(row.flags&8),theme().muted);}
     String hex;for(unsigned i=0;i<std::min<unsigned>(g.valueSize,16);++i){char b[4];snprintf(b,sizeof(b),"%02X ",g.value[i]);hex+=b;}wrap(5,83,hex,24,2);text(5,105,String("Notifications ")+g.notifications,theme().muted);footer("A:Read D:Sub #:Save B:Exit");
   }
+  else if(screen==Screen::Attacks){header("WIFI / BLE ATTACKS");constexpr unsigned count=unsigned(AttackMode::Count);String items[count+2];for(unsigned i=0;i<count;++i)items[i]=attackDefinitions[i].name;items[count]="Named beacons / replay";items[count+1]="Stop transmission";menuRows(items,count+2);footer("A:Review B:Back C:Home");}
+  else if(screen==Screen::AttackConfirm){
+    header("REVIEW ATTACK");const auto& def=attackDefinitions[unsigned(pendingAttack)];auto& t=attackOptions.target;
+    text(5,34,String(def.name).substring(0,25),theme().accent);
+    text(5,47,def.ble?"Nearby BLE receivers":String(t.ssid).substring(0,25));
+    text(5,59,def.needsAp?macText(t.bssid):def.ble?"Pairing advertisement test":"Own radio / configured SSID",theme().muted);
+    text(5,71,String(attackOptions.durationSeconds)+"s / "+attackOptions.packetsPerSecond+"pps / CH"+t.channel);
+    text(5,83,t.hasClient?"Client "+macText(t.client):"Client: broadcast",theme().muted);
+    char reason[64];bool ok=attackAvailable(pendingAttack,reason,sizeof(reason));text(5,98,String(reason).substring(0,25),ok?theme().accent:TFT_ORANGE);footer("A:Start D:Rate L/R:Time");
+  }
+  else if(screen==Screen::AttackRun){
+    header("ATTACK SESSION");text(5,34,String(attackDefinitions[unsigned(attackStatus.mode)].name).substring(0,25),theme().accent);
+    text(5,48,attackStatus.active?"TRANSMITTING":"STOPPED",attackStatus.active?TFT_ORANGE:theme().muted);
+    text(5,61,String("Driver accepted ")+attackStatus.accepted);text(5,73,String("Errors ")+attackStatus.errors+" / EAPOL "+recon.eapolFrames);
+    text(5,86,String(attackStatus.message).substring(0,25));text(5,101,"Effect needs verification",theme().muted);footer("A/B:Stop C:Home");
+  }
   else if(screen==Screen::Lab){header("RADIO TEST TOOLS");String items[]={"WiFi beacon / 15s","BLE beacon / 15s","Stop transmission"};menuRows(items,3);text(5,78,lab.mode==LabMode::Off?"IDLE":"TRANSMITTING",lab.mode==LabMode::Off?theme().muted:TFT_ORANGE);text(5,90,String(lab.message).substring(0,25));text(5,103,String("Accepted ")+lab.accepted+" errors "+lab.errors,theme().muted);footer("A:Review B:Stop/back");}
   else if(screen==Screen::LabConfirm){header("REVIEW RADIO TEST");text(5,35,pendingLab==LabMode::WifiBeacon?"WiFi beacon transmission":pendingLab==LabMode::BleReplay?"BLE advert replay":"BLE beacon transmission",theme().accent);text(5,51,pendingLab==LabMode::BleReplay?"Selected payload; own MAC":"Name: HackerPhone-Lab");text(5,65,"Duration: 15 seconds");text(5,79,pendingLab==LabMode::WifiBeacon?"10 frames/s, selected CH":"100ms advertising interval");text(5,96,"C or B stops the session",theme().muted);footer("A:Start B:Cancel");}
+  else if(screen==Screen::Infrared){header("INFRARED");String items[]={"Record remote signal","Browse SD remotes","Current signal",String("Carrier: ")+String(irFrequency()/1000)+" kHz","Save current signal","Stop IR"};menuRows(items,6);footer("A:Open B:Back C:Home");}
+  else if(screen==Screen::IrSignal){
+    header("IR REMOTE");const auto* s=irSignal();
+    if(irStatus.state==IrState::Learning){text(5,38,"RECORDING",theme().accent);text(5,54,"Point remote at IR module");text(5,67,"Press a button once");text(5,80,String(irFrequency()/1000)+" kHz assumed carrier");}
+    else{ text(5,35,s?String(s->name).substring(0,25):"No signal selected",theme().accent);text(5,49,s?String(s->count)+" pulses / "+String(s->frequency/1000)+" kHz":"Record or browse SD");text(5,63,irStatus.library?"SD button #"+String(irStatus.record):irStatus.unsaved?"UNSAVED - D saves to SD":"Stored signal");text(5,77,irStatus.state==IrState::Sending?"TRANSMITTING":"A:Send once  D:Save",irStatus.state==IrState::Sending?TFT_ORANGE:theme().muted);}
+    wrap(5,91,irStatus.message,25,2);footer(irBusy()?"A/B:Stop C:Home":"L/R:Button B:IR menu");
+  }
   else if(screen==Screen::Incoming){header("INCOMING CALL");wrap(5,42,phone.state().caller);text(5,80,"Audio not yet validated",TFT_ORANGE);footer("A:Answer B:Reject");}
-  else {header("ENGINEERING BUILD 0.2");text(5,35,String("Keys ")+(mp24::keysReady?"OK":"FAIL")+" / "+mp24::keyEvents);text(5,47,String("SD ")+(mp24::cardReady?"OK":"unavailable"));text(5,59,"Heap "+String(ESP.getFreeHeap()/1024)+"K");text(5,71,"PSRAM "+String(ESP.getFreePsram()/1024)+"K");text(5,83,"Modem "+String(phone.state().online?"OK":"starting/offline"));text(5,95,"WiFi "+String(recon.wifiFrames)+" BLE "+String(recon.bleFrames));footer("C:Home");}
+  else {header("ENGINEERING BUILD 0.3");text(5,35,String("Keys ")+(mp24::keysReady?"OK":"FAIL")+" / "+mp24::keyEvents);text(5,47,String("SD ")+(mp24::cardReady?"OK":"unavailable"));text(5,59,"Heap "+String(ESP.getFreeHeap()/1024)+"K");text(5,71,"PSRAM "+String(ESP.getFreePsram()/1024)+"K");text(5,83,"Modem "+String(phone.state().online?"OK":"starting/offline"));text(5,95,"WiFi "+String(recon.wifiFrames)+" BLE "+String(recon.bleFrames));footer("C:Home");}
   if(notice.length()&&uint32_t(now-noticeAt)<2500){f.fillRect(0,101,160,14,theme().selection);text(3,104,notice.substring(0,26),TFT_YELLOW);}
   mp24::present();
 }
@@ -253,12 +314,47 @@ static void serialCommands(uint32_t now){
   static char line[256];static unsigned n=0;static bool overflow=false;
   while(Serial.available()){char c=Serial.read();if(c=='\r')continue;if(c!='\n'){if(!overflow&&n+1<sizeof(line))line[n++]=c;else overflow=true;continue;}line[n]=0;n=0;if(overflow){overflow=false;Serial.println("HP_ERROR Command too long");continue;}
     if(!ready&&strcmp(line,"INFO")&&strcmp(line,"DISPLAY")){Serial.println("HP_NOT_READY Use INFO or DISPLAY");continue;}
-    if(!strcmp(line,"INFO"))Serial.printf("HP_INFO v0.2.0-dev MP24 160x128 keys=%d events=%lu i2cerr=%lu sd=%d modem=%d sim=%u heap=%u psram=%u wifi=%lu ble=%lu drops=%lu\n",mp24::keysReady,(unsigned long)mp24::keyEvents,(unsigned long)mp24::i2cErrors,mp24::cardReady,phone.state().online,unsigned(phone.state().sim),ESP.getFreeHeap(),ESP.getFreePsram(),(unsigned long)recon.wifiFrames,(unsigned long)recon.bleFrames,(unsigned long)radioDrops);
+    if(!strcmp(line,"INFO"))Serial.printf("HP_INFO v0.3.0-dev MP24 160x128 keys=%d events=%lu i2cerr=%lu sd=%d modem=%d sim=%u heap=%u psram=%u wifi=%lu ble=%lu drops=%lu\n",mp24::keysReady,(unsigned long)mp24::keyEvents,(unsigned long)mp24::i2cErrors,mp24::cardReady,phone.state().online,unsigned(phone.state().sim),ESP.getFreeHeap(),ESP.getFreePsram(),(unsigned long)recon.wifiFrames,(unsigned long)recon.bleFrames,(unsigned long)radioDrops);
     else if(!strcmp(line,"DISPLAY"))Serial.printf("HP_DISPLAY frames=%lu errors=%lu light=%d\n",(unsigned long)mp24::displayFrames,(unsigned long)mp24::displayErrors,mp24::lightReady);
+    else if(!strcmp(line,"LIGHT")){mp24::backlight(true);Serial.printf("HP_LIGHT ready=%u\n",mp24::lightReady);}
     else if(!strcmp(line,"HEALTH"))Serial.printf("HP_HEALTH uptime=%lu stack_free=%u heap_ok=%d logging=%d log_bytes=%lu targets=%u\n",(unsigned long)now,unsigned(uxTaskGetStackHighWaterMark(nullptr)),heap_caps_check_integrity_all(false),logging,(unsigned long)(session?session.size():0),unsigned(recon.count(now)));
-    else if(!strcmp(line,"HOME")){labStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;}
+    else if(!strcmp(line,"HOME")){irStop();attackStop();labStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;}
+    else if(!strcmp(line,"IR")){openInfrared();Serial.println("HP_IR MENU");}
+    else if(!strcmp(line,"IR STATUS")){auto s=irSignal();Serial.printf("HP_IR state=%u count=%u hz=%lu unsaved=%u library=%u record=%u learned=%lu sent=%lu message=%s\n",unsigned(irStatus.state),s?s->count:0,(unsigned long)(s?s->frequency:irFrequency()),irStatus.unsaved,irStatus.library,irStatus.record,(unsigned long)irStatus.learned,(unsigned long)irStatus.sent,irStatus.message);}
+    else if(!strcmp(line,"IR STOP")){irStop();Serial.println("HP_IR STOPPED");}
+    else if(!strcmp(line,"IR SELFTEST")){Serial.printf("HP_IR_SELFTEST %s\n",irStorageTest()?"PASS":"FAIL");}
+    else if(!strcmp(line,"IR RECORD")){openInfrared();bool ok=!phone.state().phonePriority()&&irLearn();if(ok)screen=Screen::IrSignal;Serial.printf("HP_IR %s %s\n",ok?"RECORDING":"FAILED",irStatus.message);}
+    else if(!strcmp(line,"IR SEND")){bool ok=!phone.state().phonePriority()&&irSend();if(ok)screen=Screen::IrSignal;Serial.printf("HP_IR %s %s\n",ok?"SENDING":"FAILED",irStatus.message);}
+    else if(!strcmp(line,"IR SAVE")||!strncmp(line,"IR SAVE ",8)){bool ok=irSave(strlen(line)>8?line+8:nullptr);Serial.printf("HP_IR %s %s\n",ok?"SAVED":"FAILED",irStatus.message);}
+    else if(!strncmp(line,"IR OPEN ",8)){openInfrared();bool ok=irOpen(line+8);screen=Screen::IrSignal;Serial.printf("HP_IR %s %s\n",ok?"LOADED":"FAILED",irStatus.message);}
+    else if(!strcmp(line,"IR NEXT")||!strcmp(line,"IR PREV")){bool ok=!strcmp(line,"IR NEXT")?irNext():irPrevious();Serial.printf("HP_IR %s %s\n",ok?"LOADED":"FAILED",irStatus.message);}
+    else if(!strncmp(line,"IR FREQ ",8)){char* end;unsigned long hz=strtoul(line+8,&end,10);bool ok=end!=line+8&&!*end&&irSetFrequency(hz);Serial.printf("HP_IR %s\n",ok?"CONFIGURED":"FAILED");}
     else if(!strcmp(line,"TOOLS")){screen=Screen::Tools;menu=0;}
-    else if(!strcmp(line,"FILES")){screen=Screen::Files;if(mp24::cardReady)files();}
+    else if(!strcmp(line,"ATTACKS")){screen=Screen::Attacks;menu=0;}
+    else if(!strcmp(line,"ATTACK LIST")){for(unsigned i=0;i<unsigned(AttackMode::Count);++i)Serial.printf("HP_ATTACK_MODE %u %s\n",i,attackDefinitions[i].name);Serial.println("HP_ATTACK_END");}
+    else if(!strcmp(line,"ATTACK STATUS")){
+      auto& t=attackOptions.target;Serial.printf("HP_ATTACK active=%u mode=%u accepted=%lu errors=%lu driver=%d adapter=%u message=%s\n",attackStatus.active,unsigned(attackStatus.mode),(unsigned long)attackStatus.accepted,(unsigned long)attackStatus.errors,attackStatus.lastError,rawFrameAdapterLinked(),attackStatus.message);
+      Serial.printf("HP_ATTACK_TARGET ap=%u bssid=%s channel=%u client=%s time=%u rate=%u ssid=%s\n",t.hasAp,macText(t.bssid).c_str(),t.channel,t.hasClient?macText(t.client).c_str():"broadcast",attackOptions.durationSeconds,attackOptions.packetsPerSecond,t.ssid);
+    }
+    else if(!strcmp(line,"ATTACK STOP")){attackStop();Serial.println("HP_ATTACK STOPPED");}
+    else if(!strcmp(line,"ATTACK CLEAR CLIENT")){if(!attackStatus.active){attackOptions.target.hasClient=false;memset(attackOptions.target.client,0,6);}Serial.printf("HP_ATTACK %s\n",attackStatus.active?"BUSY":"CLIENT_CLEARED");}
+    else if(!strncmp(line,"ATTACK SSID ",12)){
+      size_t len=strlen(line+12);bool ok=!attackStatus.active&&len&&len<=32;
+      if(ok)memcpy(attackOptions.target.ssid,line+12,len+1);Serial.printf("HP_ATTACK %s\n",ok?"CONFIGURED":"FAILED");
+    }
+    else if(!strncmp(line,"ATTACK ",7)){
+      char* argument=strrchr(line,' ');char* end=nullptr;unsigned long value=argument?strtoul(argument+1,&end,10):0;
+      bool valid=argument&&end!=argument+1&&!*end&&!attackStatus.active;bool ok=false;
+      if(valid&&!strncmp(line,"ATTACK AP ",10)&&argument==line+9)ok=attackSelectAp(value);
+      else if(valid&&!strncmp(line,"ATTACK CLIENT ",14)&&argument==line+13)ok=attackSelectClient(value);
+      else if(valid&&!strncmp(line,"ATTACK TIME ",12)&&argument==line+11&&value>=1&&value<=60){attackOptions.durationSeconds=value;ok=true;}
+      else if(valid&&!strncmp(line,"ATTACK RATE ",12)&&argument==line+11&&value>=1&&value<=100){attackOptions.packetsPerSecond=value;ok=true;}
+      else if(valid&&!strncmp(line,"ATTACK CHANNEL ",15)&&argument==line+14&&value>=1&&value<=11){attackOptions.target.channel=value;ok=true;}
+      else if(valid&&!strncmp(line,"ATTACK DEST ",12)&&argument==line+11&&value>=1&&value<=11){attackOptions.target.destinationChannel=value;ok=true;}
+      else if(valid&&!strncmp(line,"ATTACK START ",13)&&argument==line+12&&value<unsigned(AttackMode::Count)&&!phone.state().phonePriority()){pendingAttack=AttackMode(value);ok=attackStart(pendingAttack);if(ok)screen=Screen::AttackRun;}
+      Serial.printf("HP_ATTACK %s\n",ok?"OK":"FAILED");
+    }
+    else if(!strcmp(line,"FILES")){screen=Screen::Files;irBrowsing=false;if(mp24::cardReady)files();}
     else if(!strcmp(line,"SETTINGS")){screen=Screen::Settings;menu=0;}
     else if(!strcmp(line,"CHANNELS")){screen=Screen::Channels;}
     else if(!strcmp(line,"ALERTS")){screen=Screen::Alerts;}
@@ -267,7 +363,7 @@ static void serialCommands(uint32_t now){
     else if(!strcmp(line,"STOP")){stopTools();Serial.println("HP_STOPPED");}
     else if(!strcmp(line,"LAB WIFI")||!strcmp(line,"LAB BLE")){bool ok=!phone.state().phonePriority()&&labStart(!strcmp(line,"LAB WIFI")?LabMode::WifiBeacon:LabMode::BleBeacon,channelLock?channelLock:1);if(ok){screen=Screen::Lab;menu=2;}Serial.printf("HP_LAB %s\n",ok?"STARTED":"FAILED");}
     else if(!strcmp(line,"LAB STATUS"))Serial.printf("HP_LAB mode=%u accepted=%lu errors=%lu message=%s\n",unsigned(lab.mode),(unsigned long)lab.accepted,(unsigned long)lab.errors,lab.message);
-    else if(!strncmp(line,"MODE ",5)&&strlen(line)==6&&line[5]>='0'&&line[5]<='2'){if(gattStatus().busy||gattStatus().connected||lab.mode!=LabMode::Off)Serial.println("HP_ERROR Stop active tool first");else{radioSetMode(RadioMode(line[5]-'0'));Serial.println("HP_MODE_OK");}}
+    else if(!strncmp(line,"MODE ",5)&&strlen(line)==6&&line[5]>='0'&&line[5]<='2'){if(attackStatus.active||gattStatus().busy||gattStatus().connected||lab.mode!=LabMode::Off)Serial.println("HP_ERROR Stop active tool first");else{radioSetMode(RadioMode(line[5]-'0'));Serial.println("HP_MODE_OK");}}
     else if(!strcmp(line,"PCAP START")||!strcmp(line,"PCAP EAPOL")){bool ok=startListening()&&captureStart(!strcmp(line,"PCAP EAPOL"));Serial.printf("HP_PCAP %s %s\n",ok?"STARTED":"FAILED",ok?storageStatus.path:"");}
     else if(!strcmp(line,"PCAP STOP")){captureStop();Serial.printf("HP_PCAP SAVED %s bytes=%lu records=%lu drops=%lu error=%u\n",storageStatus.path,(unsigned long)storageStatus.bytes,(unsigned long)storageStatus.records,(unsigned long)storageStatus.drops,storageStatus.error);}
     else if(!strcmp(line,"TARGETS")){for(unsigned i=0;i<ReconCore::Capacity;++i){auto& t=recon.targets[i];if(t.used)Serial.printf("HP_TARGET %u %s %s type=%u rssi=%d family=%s name=%s live=%u age_ms=%lu\n",i,t.ble?"BLE":"WiFi",macText(t.mac).c_str(),t.addressType,t.signal.value(),dragon::familyName(t.match.family),t.name,t.fresh(now),(unsigned long)(now-t.last));}Serial.println("HP_TARGETS_END");}
@@ -275,7 +371,7 @@ static void serialCommands(uint32_t now){
     else if(!strcmp(line,"GATT STATUS")){auto g=gattStatus();Serial.printf("HP_GATT connected=%u busy=%u rows=%u truncated=%u notifications=%lu message=%s\n",g.connected,g.busy,g.rows,g.truncated,(unsigned long)g.notifications,g.message);Serial.printf("HP_VALUE handle=%04X hex=",g.valueHandle);for(unsigned i=0;i<g.valueSize;++i)Serial.printf("%02X",g.value[i]);Serial.println();}
     else if(!strcmp(line,"GATT DUMP")){GattRow row;for(unsigned i=0;gattRow(i,row);++i)Serial.printf("HP_GATT_ROW %u %04X %s %s flags=%u\n",i,row.handle,row.service,row.uuid,row.flags);Serial.println("HP_GATT_END");}
     else if(!strcmp(line,"GATT STOP")){gattStop();Serial.println("HP_GATT_STOP");}
-    else if(!strncmp(line,"GATT CONNECT ",13)){char* end;unsigned long i=strtoul(line+13,&end,10);bool ok=end!=line+13&&!*end&&i<ReconCore::Capacity&&recon.targets[i].ble&&recon.targets[i].fresh(now)&&lab.mode==LabMode::Off&&!phone.state().phonePriority()&&gattConnect(recon.targets[i].mac,recon.targets[i].addressType);Serial.printf("HP_GATT %s\n",ok?"QUEUED":"FAILED");}
+    else if(!strncmp(line,"GATT CONNECT ",13)){char* end;unsigned long i=strtoul(line+13,&end,10);bool ok=end!=line+13&&!*end&&i<ReconCore::Capacity&&recon.targets[i].ble&&recon.targets[i].fresh(now)&&!attackStatus.active&&lab.mode==LabMode::Off&&!phone.state().phonePriority()&&gattConnect(recon.targets[i].mac,recon.targets[i].addressType);Serial.printf("HP_GATT %s\n",ok?"QUEUED":"FAILED");}
     else if(!strncmp(line,"GATT READ ",10)||!strncmp(line,"GATT SUB ",9)||!strncmp(line,"GATT UNSUB ",11)){
       unsigned offset=!strncmp(line,"GATT READ ",10)?10:!strncmp(line,"GATT SUB ",9)?9:11;char* end;unsigned long handle=strtoul(line+offset,&end,16);bool ok=end!=line+offset&&!*end&&handle&&handle<=65535&&!phone.state().phonePriority();if(ok)ok=offset==10?gattRead(handle):gattSubscribe(handle,offset==9);Serial.printf("HP_GATT %s\n",ok?"QUEUED":"FAILED");}
     else if(!strncmp(line,"GATT WRITE ",11)){
@@ -290,7 +386,7 @@ static void serialCommands(uint32_t now){
       File f=SD.open(String("/hackerphone/")+(line+10),FILE_READ);if(!f||f.isDirectory()||offset>f.size()||!f.seek(offset)){Serial.println("HP_FILE_ERROR read");f.close();continue;}
       uint8_t bytes[1024];int got=f.read(bytes,std::min<size_t>(sizeof(bytes),f.size()-offset));f.close();if(got<0){Serial.println("HP_FILE_ERROR IO");continue;}Serial.printf("HP_CHUNK %lu %d\n",offset,got);Serial.write(bytes,got);Serial.println("\nHP_CHUNK_END");}
     else if(!strcmp(line,"RECON"))startRecon();
-    else if(!strcmp(line,"PAUSE"))radioStop();
+    else if(!strcmp(line,"PAUSE")){attackStop();radioStop();}
     else if(!strcmp(line,"HARDWARE"))screen=Screen::Diagnostics;
     else if(!strcmp(line,"RETRYMODEM"))phone.begin(now);
     else if(!strcmp(line,"SDTEST")){
@@ -303,7 +399,7 @@ static void serialCommands(uint32_t now){
       if(created)SD.remove(path);
       Serial.printf("HP_SDTEST %s\n",ok?"PASS":"FAIL");
     }
-    else if(!strcmp(line,"SCREEN")){render(now);Serial.printf("HP_SCREEN 160 128 40960\n");Serial.flush();uint8_t row[320];for(int y=0;y<128;++y){for(int x=0;x<160;++x){uint16_t pixel=mp24::frame.readPixel(x,y);row[x*2]=pixel>>8;row[x*2+1]=pixel;}Serial.write(row,sizeof(row));}Serial.print("\nHP_SCREEN_END\n");}
+    else if(!strcmp(line,"SCREEN")){render(now);Serial.setTxTimeoutMs(250);Serial.printf("HP_SCREEN 160 128 40960\n");Serial.flush();uint8_t row[320];bool ok=true;for(int y=0;y<128;++y){for(int x=0;x<160;++x){uint16_t pixel=mp24::frame.readPixel(x,y);row[x*2]=pixel>>8;row[x*2+1]=pixel;}if(Serial.write(row,sizeof(row))!=sizeof(row)){ok=false;break;}}Serial.print(ok?"\nHP_SCREEN_END\n":"\nHP_SCREEN_ERROR Short USB write\n");Serial.setTxTimeoutMs(20);}
     else Serial.println("Commands: INFO HOME RECON PAUSE HARDWARE RETRYMODEM SCREEN");
   }
 }
@@ -314,10 +410,10 @@ void setup(){
   ready=mp24::begin();
   if(!ready){Serial.println("HP_FAIL framebuffer");return;}
   auto& f=mp24::frame;f.fillSprite(TFT_BLACK);f.setSwapBytes(true);f.pushImage((160-bwmWidth)/2,7,bwmWidth,bwmHeight,bwmPixels);text(44,91,"HACKERPHONE");text(19,107,"Engineering preview",theme().muted);mp24::present();
-  storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.2.0-dev");
+  storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.3.0-dev");
 }
 void loop(){if(!ready){serialCommands(millis());delay(10);return;}uint32_t now=millis();mp24::modemPoll(phone,now);serialCommands(now);now=millis();key(mp24::key(now),now);now=millis();
-  if(phone.state().phonePriority()){if(radioRunning)radioStop();if(lab.mode!=LabMode::Off)labStop();auto gs=gattStatus();if(gs.busy||gs.connected)gattStop();if(phone.state().call==Call::Ringing)screen=Screen::Incoming;}
-  radioTick(now);labTick(now);storageTick(now);saveTargets(now);
+  if(phone.state().phonePriority()){irStop();attackStop();if(radioRunning)radioStop();if(lab.mode!=LabMode::Off)labStop();auto gs=gattStatus();if(gs.busy||gs.connected)gattStop();if(phone.state().call==Call::Ringing)screen=Screen::Incoming;}
+  radioTick(now);labTick(now);attackTick(now);irTick(now);storageTick(now);saveTargets(now);
   if(uint32_t(now-lastDraw)>=100){lastDraw=now;render(now);}delay(2);
 }

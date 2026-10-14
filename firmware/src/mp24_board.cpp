@@ -21,16 +21,19 @@ static bool rd(uint8_t addr,uint8_t reg,uint8_t* out,size_t n){
 }
 static bool wr(uint8_t addr,uint8_t reg,uint8_t value){Wire.beginTransmission(addr);Wire.write(reg);Wire.write(value);if(Wire.endTransmission()){++i2cErrors;return false;}return true;}
 static bool mask(uint8_t addr,uint8_t reg,uint8_t set,uint8_t clear){uint8_t v;if(!rd(addr,reg,&v,1))return false;return wr(addr,reg,uint8_t((v|set)&~clear));}
-void backlight(bool on){lightReady=mask(0x5b,3,on?0:1,on?1:0);}
+void backlight(bool on){
+  if(!lightReady){uint8_t id=0;if(!rd(0x5b,0x10,&id,1)||id!=0x23)return;
+    // Preserve unrelated LED channels and GPIO outputs during recovery.
+    if(!mask(0x5b,0x13,1,0)||!mask(0x5b,0x05,0,1))return;
+  }
+  lightReady=mask(0x5b,3,on?0:1,on?1:0);
+}
 bool begin(){
   Serial.println("HP_STAGE i2c");
   Wire.begin(47,48,100000);Wire.setTimeOut(20);
-  uint8_t id=0;
-  if(rd(0x5b,0x10,&id,1)&&id==0x23){
-    // AW9523 P1_0 is an active-low backlight output on this sample.
-    mask(0x5b,0x13,1,0); // GPIO mode, preserve the other LED channels.
-    mask(0x5b,0x05,0,1);backlight(true);
-  }
+  // A warm-reset probe occasionally NACKs while the expander is settling.
+  // Retry only this verified device, with a bounded startup delay.
+  for(unsigned attempt=0;attempt<3&&!lightReady;++attempt){backlight(true);if(!lightReady)delay(20);}
   // XL9555 input banks. Preserve output latches and unrelated directions.
   keysReady=mask(0x20,6,0xff,0)&&mask(0x20,7,0x77,0)&&mask(0x21,6,0x7f,0)&&mask(0x21,7,0x18,0);
   // Keep the speaker amplifier muted until the audio pipeline is verified.

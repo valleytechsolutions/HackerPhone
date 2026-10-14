@@ -16,6 +16,12 @@ Open **Security** for radar, APs, stations, probes, BLE, channels, alert history
 
 **Radio test tools:** review and start a fixed-name `HackerPhone-Lab` Wi-Fi beacon or BLE beacon session. Complete legacy BLE advertisements up to 31 bytes can also be replayed from the selected device menu. Sessions end after 15 seconds, on Stop, on C/B leaving the test, or when a phone call takes priority. Wi-Fi sends at most ten frames per second; BLE uses a 100 ms advertising interval. A driver rejection ends the Wi-Fi session with an error. Accepted transmit calls alone do not establish reception on another radio. Replay does not copy the remote address, clone services, break encryption or transfer pairing keys.
 
+**Wi-Fi / BLE attacks:** choose a live Wi-Fi AP from its device-tools menu, optionally select an observed client belonging to that BSSID, then review a mode under Security. Left/Right changes session duration; D changes rate; A starts; A/B stops the running session. Defaults are 15 seconds and ten packets per second, bounded to 1–60 seconds and 1–100 packets per second. BLE payload/address updates are capped at ten per second; actual advertisement interval is separately configured. The running screen reports driver-accepted requests and errors, not affected devices. Nothing starts automatically. The [mode ledger](MARAUDER-SCOPE.md) separates experimental subsets from unfinished upstream features.
+
+The SD SSID playlist reads `/hackerphone/ssids.txt`, one printable 1–32-byte SSID per line. Blank lines and lines starting with `#` are skipped. It retains one name in RAM, with a 4 KiB work limit per search. A file without a valid line in that window stops the session. Active EAPOL starts an EAPOL-filtered capture when none is already running; an existing capture keeps its original filtering and ownership.
+
+**Infrared** is a separate home app with recording, single-signal transmission and SD library browsing. See [IR controls](INFRARED.md). Entering IR stops radio tools and CSV recording.
+
 ## Traffic evidence
 
 - Disconnect candidate: six deauthentication/disassociation frames in a rolling three-second window; repeated retry frames are suppressed. Sources are spoofable. Protected reason fields remain unknown.
@@ -64,7 +70,14 @@ Copy `oui.bin` and its generated provenance JSON to `/hackerphone/` on the card 
 | `GATT WRITE handle hexbytes` | Explicit acknowledged write of 1–64 bytes |
 | `GATT SUB handle`, `GATT UNSUB handle` | Enable or disable notification/indication subscription |
 | `LAB WIFI`, `LAB BLE`, `LAB STATUS` | Start the named 15-second beacon session or inspect it |
+| `ATTACKS`, `ATTACK LIST`, `ATTACK STATUS` | Open the review menu, list local mode IDs, inspect driver/session state |
+| `ATTACK AP index`, `ATTACK CLIENT index`, `ATTACK CLEAR CLIENT` | Snapshot a live AP and optionally one of its observed clients |
+| `ATTACK TIME seconds`, `ATTACK RATE packets-per-second` | Set bounded session parameters while stopped |
+| `ATTACK CHANNEL n`, `ATTACK DEST n`, `ATTACK SSID name` | Set source/destination channel (1–11) or SSID |
+| `ATTACK START mode-id`, `ATTACK STOP` | Explicit start/stop; IDs come from `ATTACK LIST`, not the upstream ledger |
+| `IR`, `IR STATUS`, `IR RECORD`, `IR STOP` | Open/inspect/capture/cancel IR; further commands are in the IR guide |
 | `FILEINFO relative-path`, `FILECHUNK relative-path offset` | Read-only SD export protocol |
 | `SDTEST`, `SCREEN`, `RETRYMODEM` | Dedicated SD test, framebuffer capture, or modem-session retry |
+| `LIGHT` | Retry the identified backlight expander and request full brightness |
 
 Radio operations are not queued automatically on boot. Commands do not place calls or send texts. Captures and exported observation lists may contain nearby device identifiers; development outputs remain private and ignored by version control.

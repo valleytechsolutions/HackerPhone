@@ -8,7 +8,7 @@ The original 4 MB flash has been saved privately before any replacement. This bo
 
 Actual 160×128 framebuffer captures from the engineering sample, displayed at 2× size.
 
-## Current engineering build: 0.2
+## Current engineering build: 0.3
 
 - Nonblocking, bounded phone service: SIM and registration status, incoming call events, validated dial commands, SMS-submit encoding, command timeouts, and no automatic message retries.
 - No-SIM is a normal idle state; it never causes a modem power-cycle loop.
@@ -20,9 +20,11 @@ Actual 160×128 framebuffer captures from the engineering sample, displayed at 2
 - Buffered raw Wi-Fi or EAPOL-only PCAP recording to SD, with short-write/error handling and a read-only USB file exporter. See [toolkit controls](docs/TOOLKIT.md) for limits and timestamp meaning.
 - Independently implemented BLE GATT discovery, reads, writes, subscriptions, notifications and tree export. Device connection requires selecting a live BLE target; characteristic writes use the USB console. Blocking BLE requests run in a separate worker so the keypad and modem continue to be serviced.
 - Timed Wi-Fi/BLE beacon sessions and complete legacy BLE advertisement replay. Each session shows its state, stops after 15 seconds and can be stopped immediately. Advertisement replay uses this radio's address and does not clone a GATT service or pairing identity.
+- Expanded Wi-Fi/BLE attack menu with target review, bounded duration/rate, stop controls and driver-error reporting. New packet builders cover deauth/disassociation, authentication, EAPOL, sleep, SAE-commit, CSA/quiet and pairing-advert variants. These are experimental implementations; a single authentication request passed the driver check, but no peer response was observed. See [scope and validation limits](docs/MARAUDER-SCOPE.md).
+- **Infrared** home app: record a raw remote signal, transmit the selected signal once, save it to SD, and browse `.ir` libraries one button at a time. Large libraries remain on the card. [IR controls, formats and current limits](docs/INFRARED.md).
 - Optional SD vendor lookup at `/hackerphone/oui.bin`, generated with the original MIT [database builder](tools/build_vendor_db.py). No ChimeraBLE database or GPL application code is included. Random/private BLE addresses are not assigned an OUI vendor.
 - Dragon Detector's bounded parsers and signal filter are pinned to its 0.9.2 source. A device signature is evidence of a device family, not proof of malicious intent. RSSI is not a measured range or bearing.
-- [Marauder inventory](docs/MARAUDER-SCOPE.md) tracks remaining toolkit work. This is not full Marauder/ChimeraBLE parity: deauthentication transmission, authentication/SAE/CSA attacks, captive portals, BLE MITM/GATT cloning, network service scans, phone audio and SMS inbox reading are still unfinished. The on-screen dial action remains gated until its voice audio path works.
+- [Marauder inventory](docs/MARAUDER-SCOPE.md) tracks remaining toolkit work. Full parity is still unfinished: attack effectiveness, complete beacon cloning and SAE exchanges, captive portals, BLE MITM/GATT cloning, network service scans, phone audio and SMS inbox reading remain open. The on-screen dial action remains gated until its voice audio path works.
 
 ## Build and test
 
@@ -47,7 +49,7 @@ Local recovery images, captures and toolchains are excluded from Git. CI checks 
 
 Joystick or A opens a menu item; C returns home and ends active transmissions/GATT connections; B goes back or erases text. Phone number entry uses the numeric keys and `*` for a leading `+`. Messages use traditional multi-tap typing (800 ms between different letters on one key), followed by a review screen. Radar's D button pauses listening. Target details lead to a signal hunt; D opens evidence, raw advertisement, connection and replay tools. A target being viewed is pinned against table eviction so a menu action cannot silently select its replacement. The SD browser previews the first 168 printable bytes and loads 32 entries per page; Left/Right moves between pages.
 
-USB diagnostics and tools are documented in [TOOLKIT.md](docs/TOOLKIT.md). USB commands cannot place calls or send SMS; explicit `GATT` and `LAB` commands perform their named radio operations. Full flash backups, private logs, extracted engineering firmware, and radio captures stay in ignored `.work/` or on the device, never in a public repository.
+USB diagnostics and tools are documented in [TOOLKIT.md](docs/TOOLKIT.md). USB commands cannot place calls or send SMS; explicit `GATT`, `LAB`, `ATTACK` and `IR SEND` commands perform their named operations. Full flash backups, private logs, extracted engineering firmware, and radio captures stay in ignored `.work/` or on the device, never in a public repository.
 
 ## Verification still required
 
