@@ -14,6 +14,7 @@
 
 namespace hackerphone {
 IrStatus irStatus;
+void irBegin(){gpio_set_level(GPIO_NUM_45,1);gpio_set_direction(GPIO_NUM_45,GPIO_MODE_OUTPUT);}
 static IrSignal* signal=nullptr;
 static IrSignal* nextSignal=nullptr;
 static uint32_t learnFrequency=38000,started=0;

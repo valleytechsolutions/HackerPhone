@@ -21,7 +21,7 @@ Identified on 2026-10-14. The owner confirms MakerPhone 2.0 engineering hardware
 
 These are recovered hardware assignments, not copied vendor application routines. A new adapter implements them using public peripheral APIs. The full engineering firmware and disassembly remain private and are not redistributed or assigned an open-source license.
 
-The IR adapter uses ESP-IDF RMT capture/transmission with hardware carrier removal for the raw photodiode. Its receive polarity and optical performance still require testing with a physical remote. The selected carrier is an assumption for learning, not a frequency measurement. No module-slot power or identification-expander registers are guessed or written. IR is initialized only when recording or transmitting.
+The IR adapter uses ESP-IDF RMT capture/transmission with hardware carrier removal for the raw photodiode. Its receive polarity and optical performance still require testing with a physical remote. The selected carrier is an assumption for learning, not a frequency measurement. No module-slot power or identification-expander registers are guessed or written. Startup drives the identified inverted emitter HIGH (off); RMT resources are initialized only when recording or transmitting.
 
 Key mapping: digit 0–9, `*`, `#`, A/B/C/D, joystick up/down/left/right/click, volume up/down. The native scan service debounces 25 ms while polling at 100 Hz and buffers simultaneous new presses. No guesses from original Ringo are used.
 

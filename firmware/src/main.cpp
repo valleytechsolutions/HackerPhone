@@ -409,6 +409,7 @@ void setup(){
   delay(250);Serial.println("HP_STAGE usb");
   ready=mp24::begin();
   if(!ready){Serial.println("HP_FAIL framebuffer");return;}
+  irBegin();
   auto& f=mp24::frame;f.fillSprite(TFT_BLACK);f.setSwapBytes(true);f.pushImage((160-bwmWidth)/2,7,bwmWidth,bwmHeight,bwmPixels);text(44,91,"HACKERPHONE");text(19,107,"Engineering preview",theme().muted);mp24::present();
   storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.3.0-dev");
 }

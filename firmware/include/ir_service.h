@@ -11,6 +11,7 @@ struct IrStatus {
   char path[192]{};
 };
 extern IrStatus irStatus;
+void irBegin(); // Drive the identified active-low emitter to its idle level.
 const IrSignal* irSignal();
 bool irDirectories();
 bool irLearn();
