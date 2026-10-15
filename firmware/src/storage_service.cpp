@@ -10,6 +10,7 @@ static uint8_t* buffer=nullptr;
 static constexpr size_t Capacity=65536;
 static size_t head=0,tail=0,used=0;
 static bool eapol=false;
+static bool filtered=false;static uint8_t targetAddress[6]{};
 static uint32_t flushed=0;
 class SdReader:public VendorReader {
  public:File file;
@@ -36,7 +37,7 @@ static bool drain(){
   if(capture.write(buffer+tail,n)!=n){storageStatus.error=true;storageStatus.recording=false;capture.close();used=0;return false;}
   storageStatus.bytes+=n;tail=(tail+n)%Capacity;used-=n;return true;
 }
-bool captureStart(bool only){
+bool captureStart(bool only,const uint8_t* address){
   if(storageStatus.recording)return true;if(!mp24::cardReady)return false;
   if(!buffer)buffer=static_cast<uint8_t*>(ps_malloc(Capacity));if(!buffer)return false;
   if(!SD.exists("/hackerphone")&&!SD.mkdir("/hackerphone"))return false;
@@ -44,12 +45,14 @@ bool captureStart(bool only){
   capture=SD.open(storageStatus.path,FILE_WRITE);if(!capture)return false;
   uint8_t h[24];pcapHeader(h);if(capture.write(h,sizeof(h))!=sizeof(h)){capture.close();storageStatus.error=true;return false;}
   head=tail=used=0;eapol=only;flushed=millis();storageStatus.records=storageStatus.drops=0;storageStatus.bytes=24;storageStatus.error=false;storageStatus.recording=true;
+  filtered=address!=nullptr;if(address)memcpy(targetAddress,address,6);
   return true;
 }
 void captureStop(){if(!capture)return;storageStatus.recording=false;while(used&&drain()){}if(capture){capture.flush();capture.close();}}
 static void append(const uint8_t* p,size_t n){while(n){size_t z=std::min(n,Capacity-head);memcpy(buffer+head,p,z);head=(head+z)%Capacity;used+=z;p+=z;n-=z;}}
 void capturePacket(const uint8_t* data,size_t n,size_t original,uint64_t micros){
   if(!storageStatus.recording)return;
+  if(filtered&&!wifiFrameHasAddress(data,n,targetAddress))return;
   if(eapol&&!dragon::parseWifi(data,n).eapol)return;
   uint8_t h[16];if(!pcapRecord(h,micros,n,original))return;
   if(Capacity-used<n+16){++storageStatus.drops;return;}append(h,16);append(data,n);++storageStatus.records;

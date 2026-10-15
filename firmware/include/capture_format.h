@@ -7,4 +7,5 @@ bool safeRelativePath(const char* path);
 size_t csvField(char* out,size_t cap,const char* text);
 void pcapHeader(uint8_t out[24]);
 bool pcapRecord(uint8_t out[16],uint64_t unixMicros,uint32_t captured,uint32_t original);
+bool wifiFrameHasAddress(const uint8_t* frame,size_t length,const uint8_t address[6]);
 }

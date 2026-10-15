@@ -1,5 +1,6 @@
 #include "ble_explorer.h"
 #include "radio_service.h"
+#include "network_service.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <atomic>
@@ -17,6 +18,26 @@ static void value(uint16_t handle,const uint8_t* bytes,size_t n,bool notificatio
   status.valueHandle=handle;status.valueSize=std::min(n,sizeof(status.value));memcpy(status.value,bytes,status.valueSize);
   if(notification)++status.notifications;xSemaphoreGive(mutex);
 }
+static void trackerSound(){
+  struct Protocol{const char* service;const char* characteristic;uint8_t bytes[3],length;};
+  static const Protocol protocols[]={
+    {"7dfc9000-7d1c-4951-86aa-8d9728f8d66c","7dfc9001-7d1c-4951-86aa-8d9728f8d66c",{0xaf,0,0},1},
+    {"0000fd44-0000-1000-8000-00805f9b34fb","4f860003-943b-49ef-bed4-2f730304427a",{1,0,3},3},
+    {"15190001-12f4-c226-88ed-2ac5579f2a85","8e0c0001-1d68-fb92-bf61-48377421680e",{0,3,0},2}
+  };
+  bool found=false;
+  for(const auto& p:protocols){if(cancel.load())break;
+    auto* service=client->getService(NimBLEUUID(p.service));if(!service)continue;
+    auto* chr=service->getCharacteristic(NimBLEUUID(p.characteristic));if(!chr)continue;found=true;
+    if(!chr->canWrite()&&!chr->canWriteNoResponse()){message("Sound characteristic not writable");break;}
+    if(chr->canIndicate()||chr->canNotify())chr->subscribe(!chr->canIndicate(),[](NimBLERemoteCharacteristic* c,uint8_t* d,size_t n,bool){value(c->getHandle(),d,n,true);});
+    bool ok=!cancel.load()&&chr->writeValue(p.bytes,p.length,chr->canWrite());message(ok?"Sound command sent; listen":"Sound write rejected");
+    xSemaphoreTake(mutex,portMAX_DELAY);status.soundSent=ok;xSemaphoreGive(mutex);
+    uint32_t start=millis();while(ok&&!cancel.load()&&client->isConnected()&&uint32_t(millis()-start)<2000)vTaskDelay(pdMS_TO_TICKS(20));break;
+  }
+  if(!found&&!cancel.load())message("No supported sound service");
+  if(client->isConnected())client->disconnect();
+}
 static void worker(void*){
   Job job;
   for(;;){
@@ -26,11 +47,12 @@ static void worker(void*){
     }
     if(cancel.load())continue;
     xSemaphoreTake(mutex,portMAX_DELAY);status.busy=true;xSemaphoreGive(mutex);
-    if(job.op==1){
+    if(job.op==1||job.op==6){
       if(client->isConnected())client->disconnect();
       xSemaphoreTake(mutex,portMAX_DELAY);status={};status.busy=true;xSemaphoreGive(mutex);message("Connecting...");
       // This constructor accepts display-order bytes and reverses them internally.
       if(client->connect(NimBLEAddress(job.mac,job.type),true,false,false)&&!cancel.load()){
+        if(job.op==6)trackerSound();else{
         message("Discovering services...");
         unsigned count=0;bool full=false;
         for(auto* service:client->getServices(true)){
@@ -44,6 +66,7 @@ static void worker(void*){
         }
         xSemaphoreTake(mutex,portMAX_DELAY);status.truncated=full;xSemaphoreGive(mutex);
         message(cancel.load()?"Cancelled":full?"Connected; first 48 rows":"Connected; A reads");
+        }
       }else{char error[48];snprintf(error,sizeof(error),"Connect failed/stopped (%d)",client->getLastError());message(error);}
     }else if(client->isConnected()){
       auto* chr=client->getCharacteristic(job.handle);
@@ -76,12 +99,18 @@ static bool prepare(){
 static bool queue(Job& job){
   if(!jobs||cancel.load())return false;
   xSemaphoreTake(mutex,portMAX_DELAY);
-  if(status.busy||(job.op!=1&&!status.connected)){xSemaphoreGive(mutex);return false;}
+  if(status.busy||(job.op!=1&&job.op!=6&&!status.connected)){xSemaphoreGive(mutex);return false;}
   bool ok=xQueueSend(jobs,&job,0)==pdTRUE;if(ok)status.busy=true;xSemaphoreGive(mutex);return ok;
 }
 bool gattConnect(const uint8_t mac[6],uint8_t type){
+  if(networkStatus().busy)return false;
   if(type>1||!prepare()||gattStatus().busy||gattStatus().connected)return false;
   radioStop();cancel=false;Job job;job.op=1;memcpy(job.mac,mac,6);job.type=type;return queue(job);
+}
+bool gattTrackerSound(const uint8_t mac[6],uint8_t type){
+  if(networkStatus().busy)return false;
+  if(type>1||!prepare()||gattStatus().busy||gattStatus().connected)return false;
+  radioStop();cancel=false;Job job;job.op=6;memcpy(job.mac,mac,6);job.type=type;return queue(job);
 }
 void gattStop(){if(!jobs)return;cancel=true;xQueueReset(jobs);client->cancelConnect();if(client->isConnected())client->disconnect();}
 bool gattRead(uint16_t handle){Job j;j.op=2;j.handle=handle;return queue(j);}

@@ -1,510 +1,665 @@
 {
   "reference": "justcallmekoko/ESP32Marauder",
   "commit": "d3ceb28afeda1196ca27c13adeaa69ada52383f3",
-  "meaning": "Inventory only; no full-parity or hardware-validation claim. Numeric modes are upstream identifiers, not our dispatch API.",
+  "meaning": "Reviewed capability mapping, not full feature parity. Numeric aliases are preserved; use local command identifiers from TOOLKIT.md.",
   "modes": [
     {
       "mode": "OTA_UPDATE",
       "upstream_value": 100,
-      "status": "not_ported"
+      "status": "unavailable_partition_layout",
+      "implementation": "App-only USB development flashing",
+      "limits": "Factory-only partition map has no OTA slot. Repartitioning would destroy the established recovery contract; no OTA claim."
     },
     {
       "mode": "SHOW_INFO",
       "upstream_value": 101,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Hardware screen / INFO / HEALTH / DISPLAY",
+      "limits": "Engineering-sample evidence only; not production board certification."
     },
     {
       "mode": "ESP_UPDATE",
       "upstream_value": 102,
-      "status": "not_ported"
+      "status": "independent_subset",
+      "implementation": "App-only USB update with chip/recovery/hash checks",
+      "limits": "No on-device SD updater or web flasher until engineering hardware/recovery acceptance."
     },
     {
       "mode": "WIFI_SCAN_OFF",
       "upstream_value": 0,
-      "status": "independent_subset_implemented",
-      "implementation": "stop_all_radio_tools"
+      "status": "implemented",
+      "implementation": "C / Stop all tools / STOP",
+      "limits": "Connection workers cancel asynchronously; no automatic active test on boot."
     },
     {
       "mode": "WIFI_SCAN_PROBE",
       "upstream_value": 1,
-      "status": "independent_subset_implemented",
-      "implementation": "probe_request_view"
+      "status": "implemented",
+      "implementation": "Security lists and SCAN 0..4",
+      "limits": "64 live/saved observation slots, 15-second live window; 2.4 GHz only."
     },
     {
       "mode": "WIFI_SCAN_AP",
       "upstream_value": 2,
-      "status": "independent_subset_implemented",
-      "implementation": "access_point_view"
+      "status": "implemented",
+      "implementation": "Security lists and SCAN 0..4",
+      "limits": "64 live/saved observation slots, 15-second live window; 2.4 GHz only."
     },
     {
       "mode": "WIFI_SCAN_PWN",
       "upstream_value": 3,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 5..8",
+      "limits": "Pineapple heuristics are low-confidence shared-hardware clues. Multi-SSID requires three distinct SSIDs per BSSID; only three variants retained."
     },
     {
       "mode": "WIFI_SCAN_EAPOL",
       "upstream_value": 4,
-      "status": "independent_subset_implemented",
-      "implementation": "passive_eapol_counter_and_filtered_pcap"
+      "status": "implemented",
+      "implementation": "Raw/EAPOL PCAP; target tools Record this AP; PCAP AP / PCAP EAPOLAP; EAPOL monitor",
+      "limits": "1024-byte snaplen. AP filter matches frame addresses. Complete-sequence count checks order/replay/nonce, not MIC/password correctness."
     },
     {
       "mode": "WIFI_SCAN_DEAUTH",
       "upstream_value": 5,
-      "status": "independent_subset_implemented",
-      "implementation": "passive_disconnect_burst_monitor"
+      "status": "implemented",
+      "implementation": "Disconnect scanner and Traffic alerts",
+      "limits": "Retry-filtered burst threshold; cannot prove an attack or identify the operator."
     },
     {
       "mode": "WIFI_SCAN_ALL",
       "upstream_value": 6,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented",
+      "implementation": "Security lists and SCAN 0..4",
+      "limits": "64 live/saved observation slots, 15-second live window; 2.4 GHz only."
     },
     {
       "mode": "WIFI_PACKET_MONITOR",
       "upstream_value": 7,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Packet / BLE analyzer; D toggles EAPOL summary",
+      "limits": "48 one-second samples; combined mode alternates Wi-Fi/BLE and is not simultaneous RF reception."
     },
     {
       "mode": "WIFI_ATTACK_BEACON_SPAM",
       "upstream_value": 8,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "random_ssid_beacons"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Random / SD / Rickroll / funny beacon playlists",
+      "limits": "Original short playlist text; duration 1..60s, 1..100 requested packets/s. Shared RF reachability not tested per playlist."
     },
     {
       "mode": "WIFI_ATTACK_RICK_ROLL",
       "upstream_value": 9,
-      "status": "not_ported"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Random / SD / Rickroll / funny beacon playlists",
+      "limits": "Original short playlist text; duration 1..60s, 1..100 requested packets/s. Shared RF reachability not tested per playlist."
     },
     {
       "mode": "BT_SCAN_ALL",
       "upstream_value": 10,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented",
+      "implementation": "All BLE devices / SCAN 4; optional BLE ACTIVE 1",
+      "limits": "Shared list/details UI instead of upstream layouts; legacy BLE advertising only, no Bluetooth Classic."
     },
     {
       "mode": "BT_SCAN_SKIMMERS",
       "upstream_value": 11,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "WIFI_SCAN_ESPRESSIF",
       "upstream_value": 12,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 5..8",
+      "limits": "Pineapple heuristics are low-confidence shared-hardware clues. Multi-SSID requires three distinct SSIDs per BSSID; only three variants retained."
     },
     {
       "mode": "LV_JOIN_WIFI",
       "upstream_value": 13,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Connected network tools: SSID/password editor, saved local profile, Join, DHCP status",
+      "limits": "No live authenticated-router join tested in this pass; one local NVS profile, no Internet uplink routing."
     },
     {
       "mode": "LV_ADD_SSID",
       "upstream_value": 14,
-      "status": "not_ported"
+      "status": "independent_subset",
+      "implementation": "Editable beacon SSID and saved SD SSID playlists",
+      "limits": "No complete upstream list editor or native Marauder JSON import; ASCII SSID playlist streamed from SD."
     },
     {
       "mode": "WIFI_ATTACK_BEACON_LIST",
       "upstream_value": 15,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "streamed_sd_ssid_playlist"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Random / SD / Rickroll / funny beacon playlists",
+      "limits": "Original short playlist text; duration 1..60s, 1..100 requested packets/s. Shared RF reachability not tested per playlist."
     },
     {
       "mode": "WIFI_SCAN_TARGET_AP",
       "upstream_value": 16,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Raw/EAPOL PCAP; target tools Record this AP; PCAP AP / PCAP EAPOLAP; EAPOL monitor",
+      "limits": "1024-byte snaplen. AP filter matches frame addresses. Complete-sequence count checks order/replay/nonce, not MIC/password correctness."
     },
     {
       "mode": "LV_SELECT_AP",
       "upstream_value": 17,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Use as attack AP / Target settings / ATTACK AP",
+      "limits": "Explicit target snapshot; no automatic transmission."
     },
     {
       "mode": "WIFI_ATTACK_AUTH",
       "upstream_value": 18,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "open_authentication_requests"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Probe requests and open authentication requests",
+      "limits": "One earlier driver-accepted authentication request; no peer response was observed."
     },
     {
       "mode": "WIFI_ATTACK_MIMIC",
       "upstream_value": 19,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "ssid_bssid_mimic_without_original_security_ies"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Captured full-beacon clone, random-BSSID clone, CSA and Quiet IE replacement",
+      "limits": "Complete <=1024 B beacon snapshot required. Native bounds/security-IE tests pass; no peer channel/silence effect established."
     },
     {
       "mode": "WIFI_ATTACK_DEAUTH",
       "upstream_value": 20,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_ap_deauth_or_disassociation"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "AP/client MAC selection, manual targets, 16-entry AP/client list, deauth/disassoc and EAPOL PCAP",
+      "limits": "No iPhone disconnect/reconnect result: supplied client was not observed on the test AP 2.4 GHz channel. Driver acceptance alone is not delivery."
     },
     {
       "mode": "WIFI_ATTACK_AP_SPAM",
       "upstream_value": 21,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "ssid_bssid_mimic_without_original_security_ies"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Captured full-beacon clone, random-BSSID clone, CSA and Quiet IE replacement",
+      "limits": "Complete <=1024 B beacon snapshot required. Native bounds/security-IE tests pass; no peer channel/silence effect established."
     },
     {
       "mode": "WIFI_SCAN_TARGET_AP_FULL",
       "upstream_value": 22,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Raw/EAPOL PCAP; target tools Record this AP; PCAP AP / PCAP EAPOLAP; EAPOL monitor",
+      "limits": "1024-byte snaplen. AP filter matches frame addresses. Complete-sequence count checks order/replay/nonce, not MIC/password correctness."
     },
     {
       "mode": "WIFI_SCAN_ACTIVE_EAPOL",
       "upstream_value": 23,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "deauth_plus_observed_eapol_pcap"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "AP/client MAC selection, manual targets, 16-entry AP/client list, deauth/disassoc and EAPOL PCAP",
+      "limits": "No iPhone disconnect/reconnect result: supplied client was not observed on the test AP 2.4 GHz channel. Driver acceptance alone is not delivery."
     },
     {
       "mode": "WIFI_ATTACK_DEAUTH_MANUAL",
       "upstream_value": 24,
-      "status": "not_ported"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "AP/client MAC selection, manual targets, 16-entry AP/client list, deauth/disassoc and EAPOL PCAP",
+      "limits": "No iPhone disconnect/reconnect result: supplied client was not observed on the test AP 2.4 GHz channel. Driver acceptance alone is not delivery."
     },
     {
       "mode": "WIFI_SCAN_RAW_CAPTURE",
       "upstream_value": 25,
-      "status": "independent_subset_implemented",
-      "implementation": "buffered_1024_byte_snaplen_pcap"
+      "status": "implemented",
+      "implementation": "Record Wi-Fi PCAP / PCAP START",
+      "limits": "64 KiB PSRAM ring; 1024-byte snaplen; uptime timestamps; loss/error counters; SD required."
     },
     {
       "mode": "WIFI_SCAN_STATION",
       "upstream_value": 26,
-      "status": "independent_subset_implemented",
-      "implementation": "transmitting_station_view"
+      "status": "implemented",
+      "implementation": "Security lists and SCAN 0..4",
+      "limits": "64 live/saved observation slots, 15-second live window; 2.4 GHz only."
     },
     {
       "mode": "WIFI_ATTACK_DEAUTH_TARGETED",
       "upstream_value": 27,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_ap_and_observed_client"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "AP/client MAC selection, manual targets, 16-entry AP/client list, deauth/disassoc and EAPOL PCAP",
+      "limits": "No iPhone disconnect/reconnect result: supplied client was not observed on the test AP 2.4 GHz channel. Driver acceptance alone is not delivery."
     },
     {
       "mode": "WIFI_SCAN_ACTIVE_LIST_EAPOL",
       "upstream_value": 28,
-      "status": "not_ported"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "AP/client MAC selection, manual targets, 16-entry AP/client list, deauth/disassoc and EAPOL PCAP",
+      "limits": "No iPhone disconnect/reconnect result: supplied client was not observed on the test AP 2.4 GHz channel. Driver acceptance alone is not delivery."
     },
     {
       "mode": "WIFI_SCAN_SIG_STREN",
       "upstream_value": 29,
-      "status": "independent_subset_implemented",
-      "implementation": "selected_wifi_channel_and_rssi_history"
+      "status": "implemented",
+      "implementation": "Selected-device signal hunt",
+      "limits": "RSSI trend and history; no measured distance, bearing, or verified audio feedback."
     },
     {
       "mode": "WIFI_SCAN_EVIL_PORTAL",
       "upstream_value": 30,
-      "status": "independent_subset_implemented",
-      "implementation": "ssid_security_mismatch_evidence_only"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Hotspot / captive portal; select probe SSID for Karma-style portal; SD HTML and POST log",
+      "limits": "Own AP only, no Internet forwarding. HTTP headers 1 KiB, POST 512 B, HTML 16 KiB, form queue four. No HTTPS interception; no arbitrary probe responder."
     },
     {
       "mode": "WIFI_SCAN_GPS_DATA",
       "upstream_value": 31,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_SCAN_WAR_DRIVE",
       "upstream_value": 32,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_SCAN_STATION_WAR_DRIVE",
       "upstream_value": 33,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "BT_SCAN_WAR_DRIVE",
       "upstream_value": 34,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "BT_SCAN_WAR_DRIVE_CONT",
       "upstream_value": 35,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "BT_ATTACK_SOUR_APPLE",
       "upstream_value": 36,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "sour_apple_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "BT_ATTACK_SWIFTPAIR_SPAM",
       "upstream_value": 37,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "swift_pair_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "BT_ATTACK_SPAM_ALL",
       "upstream_value": 38,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "mixed_pairing_advert_builders"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "BT_ATTACK_SAMSUNG_SPAM",
       "upstream_value": 39,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "samsung_pairing_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "WIFI_SCAN_GPS_NMEA",
       "upstream_value": 40,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "BT_ATTACK_GOOGLE_SPAM",
       "upstream_value": 41,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "fast_pair_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "BT_ATTACK_FLIPPER_SPAM",
       "upstream_value": 42,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "flipper_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "BT_SCAN_AIRTAG",
       "upstream_value": 43,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "BT_SPOOF_AIRTAG",
       "upstream_value": 44,
-      "status": "not_ported"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Selected-device Replay BLE payload + MAC",
+      "limits": "Live random BLE addresses and complete <=31 B payloads only; public MAC, GATT, pairing keys and identity rotation are not cloned. 15-second session."
     },
     {
       "mode": "BT_SCAN_FLIPPER",
       "upstream_value": 45,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "WIFI_SCAN_CHAN_ANALYZER",
       "upstream_value": 46,
-      "status": "independent_subset_implemented",
-      "implementation": "frames_per_listening_second"
+      "status": "implemented",
+      "implementation": "Channel observations / channel lock",
+      "limits": "Channels 1..11; rates normalized by time listening, not a spectrum analyzer."
     },
     {
       "mode": "BT_SCAN_ANALYZER",
       "upstream_value": 47,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Packet / BLE analyzer; D toggles EAPOL summary",
+      "limits": "48 one-second samples; combined mode alternates Wi-Fi/BLE and is not simultaneous RF reception."
     },
     {
       "mode": "WIFI_SCAN_PACKET_RATE",
       "upstream_value": 48,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Packet / BLE analyzer; D toggles EAPOL summary",
+      "limits": "48 one-second samples; combined mode alternates Wi-Fi/BLE and is not simultaneous RF reception."
     },
     {
       "mode": "WIFI_SCAN_AP_STA",
       "upstream_value": 49,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "AP/client map and AP details pages",
+      "limits": "Client association inferred from DS-direction traffic; security/WPS/PMF/manufacturer are advertised claims."
     },
     {
       "mode": "WIFI_SCAN_PINESCAN",
       "upstream_value": 50,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 5..8",
+      "limits": "Pineapple heuristics are low-confidence shared-hardware clues. Multi-SSID requires three distinct SSIDs per BSSID; only three variants retained."
     },
     {
       "mode": "WIFI_SCAN_MULTISSID",
       "upstream_value": 51,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 5..8",
+      "limits": "Pineapple heuristics are low-confidence shared-hardware clues. Multi-SSID requires three distinct SSIDs per BSSID; only three variants retained."
     },
     {
       "mode": "WIFI_CONNECTED",
       "upstream_value": 52,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Connected network tools: SSID/password editor, saved local profile, Join, DHCP status",
+      "limits": "No live authenticated-router join tested in this pass; one local NVS profile, no Internet uplink routing."
     },
     {
       "mode": "WIFI_PING_SCAN",
       "upstream_value": 53,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_PORT_SCAN_ALL",
       "upstream_value": 54,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "GPS_TRACKER",
       "upstream_value": 55,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_ATTACK_BAD_MSG",
       "upstream_value": 56,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_client_eapol_message_one"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
+      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
     },
     {
       "mode": "WIFI_ATTACK_BAD_MSG_TARGETED",
       "upstream_value": 57,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_client_eapol_message_one"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
+      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
     },
     {
       "mode": "WIFI_SCAN_TELNET",
       "upstream_value": 58,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_SCAN_SSH",
       "upstream_value": 59,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_ARP_SCAN",
       "upstream_value": 60,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_ATTACK_SLEEP",
       "upstream_value": 61,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_client_association_power_management"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
+      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
     },
     {
       "mode": "WIFI_ATTACK_SLEEP_TARGETED",
       "upstream_value": 62,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "selected_client_association_power_management"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
+      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
     },
     {
       "mode": "GPS_POI",
       "upstream_value": 63,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_SCAN_DNS",
       "upstream_value": 64,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_SCAN_HTTP",
       "upstream_value": 65,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_SCAN_HTTPS",
       "upstream_value": 66,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_SCAN_SMTP",
       "upstream_value": 67,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_SCAN_RDP",
       "upstream_value": 68,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Network tools / NETWORK PROBE 0..11",
+      "limits": "TCP/ICMP loopback passes; LAN peer effects untested. Subnet sweeps /24..30; named services test TCP port reachability, not application identity. Full-port scan cancellable, up to 65535 ports."
     },
     {
       "mode": "WIFI_HOSTSPOT",
       "upstream_value": 69,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_network_peer",
+      "implementation": "Hotspot / captive portal; select probe SSID for Karma-style portal; SD HTML and POST log",
+      "limits": "Own AP only, no Internet forwarding. HTTP headers 1 KiB, POST 512 B, HTML 16 KiB, form queue four. No HTTPS interception; no arbitrary probe responder."
     },
     {
       "mode": "BT_SCAN_AIRTAG_MON",
       "upstream_value": 70,
-      "status": "not_ported"
+      "status": "independent_subset",
+      "implementation": "Find My scanner, raw advertisements, payload-change counter and RSSI history",
+      "limits": "Address rotation is not resolved to a persistent identity. No ownership/key decryption."
     },
     {
       "mode": "WIFI_SCAN_CHAN_ACT",
       "upstream_value": 71,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "Channel observations / channel lock",
+      "limits": "Channels 1..11; rates normalized by time listening, not a spectrum analyzer."
     },
     {
       "mode": "BT_SCAN_FLOCK",
       "upstream_value": 72,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "BT_SCAN_SIMPLE",
       "upstream_value": 73,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "All BLE devices / SCAN 4; optional BLE ACTIVE 1",
+      "limits": "Shared list/details UI instead of upstream layouts; legacy BLE advertising only, no Bluetooth Classic."
     },
     {
       "mode": "BT_SCAN_SIMPLE_TWO",
       "upstream_value": 74,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "All BLE devices / SCAN 4; optional BLE ACTIVE 1",
+      "limits": "Shared list/details UI instead of upstream layouts; legacy BLE advertising only, no Bluetooth Classic."
     },
     {
       "mode": "BT_SCAN_FLOCK_WARDRIVE",
       "upstream_value": 75,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_SCAN_DETECT_FOLLOW",
       "upstream_value": 76,
-      "status": "not_ported"
+      "status": "unavailable_pending_gnss_hardware",
+      "implementation": "No geolocation workflow enabled",
+      "limits": "No verified GNSS source, antenna or route on this engineering sample. SD recon logs remain available without invented location. Location-based following/geofence inference is not implemented."
     },
     {
       "mode": "WIFI_SCAN_SAE_COMMIT",
       "upstream_value": 77,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "SAE authentication scanner / SCAN 21",
+      "limits": "Counts observed SAE authentication frames, not authentication success."
     },
     {
       "mode": "WIFI_ATTACK_SAE_COMMIT",
       "upstream_value": 78,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "group_19_initial_commit_only_no_token_exchange"
+      "status": "experimental_subset_effect_unvalidated",
+      "implementation": "Group-19 scalar/point generation, stable client and anti-clogging token retry, per-AP list state",
+      "limits": "Hunting-and-pecking token layout; no H2E negotiation, successful SAE authentication, or live WPA3 response test."
     },
     {
       "mode": "WIFI_ATTACK_CSA",
       "upstream_value": 79,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "reconstructed_beacon_with_csa_ie"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Captured full-beacon clone, random-BSSID clone, CSA and Quiet IE replacement",
+      "limits": "Complete <=1024 B beacon snapshot required. Native bounds/security-IE tests pass; no peer channel/silence effect established."
     },
     {
       "mode": "WIFI_ATTACK_QUIET",
       "upstream_value": 80,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "reconstructed_beacon_with_quiet_ie"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Captured full-beacon clone, random-BSSID clone, CSA and Quiet IE replacement",
+      "limits": "Complete <=1024 B beacon snapshot required. Native bounds/security-IE tests pass; no peer channel/silence effect established."
     },
     {
       "mode": "BT_SCAN_RAYBAN",
       "upstream_value": 81,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "BT_ATTACK_APPLE_JUICE",
       "upstream_value": 82,
-      "status": "experimental_subset_effect_not_validated",
-      "implementation": "apple_juice_advert_builder"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Pairing advertisement modes 14..20; timed start/stop",
+      "limits": "Builder/bounds tests pass; per-device OS popup/effect untested. BLE advertising rate capped at ten updates/s."
     },
     {
       "mode": "WIFI_SCAN_DISPLAY_AP_INFO",
       "upstream_value": 83,
-      "status": "not_ported"
+      "status": "implemented",
+      "implementation": "AP/client map and AP details pages",
+      "limits": "Client association inferred from DS-direction traffic; security/WPS/PMF/manufacturer are advertised claims."
     },
     {
       "mode": "BT_SCAN_FOX_HUNT",
       "upstream_value": 84,
-      "status": "independent_subset_implemented",
-      "implementation": "selected_ble_address_and_rssi_history"
+      "status": "implemented",
+      "implementation": "Selected-device signal hunt",
+      "limits": "RSSI trend and history; no measured distance, bearing, or verified audio feedback."
     },
     {
       "mode": "BT_SCAN_IBEACON",
       "upstream_value": 85,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Dedicated scanners 9..14 and evidence pages",
+      "limits": "Public identifier/name heuristics; spoofable and not evidence of malicious intent. No physical fixture for every device family."
     },
     {
       "mode": "BT_FINDMY_SOUND",
       "upstream_value": 85,
-      "status": "not_ported"
+      "status": "implemented_protocol_fixture_validated",
+      "implementation": "Selected-device Tracker sound request / TRACKER SOUND index",
+      "limits": "AirTag, Find My and DULT writes independently received by laptop fixture; real tracker sound/ownership behavior not verified."
     },
     {
       "mode": "BT_ATTACK_FINDMY_LIVE",
       "upstream_value": 86,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_peer_effect",
+      "implementation": "Find My live sound sweep / TRACKER LIVE START",
+      "limits": "Explicit 15-second sweep, up to eight distinct fresh Find My addresses; no broad live sweep run during QA. Accepted writes do not establish audible sound."
     },
     {
       "mode": "REMOTE_ID_SCAN_ALL",
       "upstream_value": 87,
-      "status": "partial_independent_recon_baseline"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Drone scanner; selected-device Remote ID detail page and hunt",
+      "limits": "Wi-Fi beacon/NAN and BLE decoded by pinned OpenDroneID; eight decoded-aircraft slots. Coordinates are self-reported. No live drone fixture yet."
     },
     {
       "mode": "REMOTE_ID_SCAN_TARGET",
       "upstream_value": 88,
-      "status": "not_ported"
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Drone scanner; selected-device Remote ID detail page and hunt",
+      "limits": "Wi-Fi beacon/NAN and BLE decoded by pinned OpenDroneID; eight decoded-aircraft slots. Coordinates are self-reported. No live drone fixture yet."
     },
     {
       "mode": "WIFI_ATTACK_FUNNY_BEACON",
       "upstream_value": 99,
-      "status": "not_ported"
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Random / SD / Rickroll / funny beacon playlists",
+      "limits": "Original short playlist text; duration 1..60s, 1..100 requested packets/s. Shared RF reachability not tested per playlist."
     }
   ]
 }

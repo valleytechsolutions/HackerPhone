@@ -8,7 +8,7 @@ The original 4 MB flash has been saved privately before any replacement. This bo
 
 Actual 160×128 framebuffer captures from the engineering sample, displayed at 2× size.
 
-## Current engineering build: 0.3
+## Current engineering build: 0.4
 
 - Nonblocking, bounded phone service: SIM and registration status, incoming call events, validated dial commands, SMS-submit encoding, command timeouts, and no automatic message retries.
 - No-SIM is a normal idle state; it never causes a modem power-cycle loop.
@@ -19,12 +19,16 @@ Actual 160×128 framebuffer captures from the engineering sample, displayed at 2
 - Security menu: radar, Wi-Fi access points, transmitting stations, probe requests, BLE devices, dwell-normalized channel observations, and disconnect/BLE-spam/SSID-conflict events. Wi-Fi-only, BLE-only, combined listening and channel lock are selectable.
 - Buffered raw Wi-Fi or EAPOL-only PCAP recording to SD, with short-write/error handling and a read-only USB file exporter. See [toolkit controls](docs/TOOLKIT.md) for limits and timestamp meaning.
 - Independently implemented BLE GATT discovery, reads, writes, subscriptions, notifications and tree export. Device connection requires selecting a live BLE target; characteristic writes use the USB console. Blocking BLE requests run in a separate worker so the keypad and modem continue to be serviced.
-- Timed Wi-Fi/BLE beacon sessions and complete legacy BLE advertisement replay. Each session shows its state, stops after 15 seconds and can be stopped immediately. Advertisement replay uses this radio's address and does not clone a GATT service or pairing identity.
+- Timed Wi-Fi/BLE beacon sessions and complete legacy BLE advertisement replay. Optional identity replay supports random BLE addresses only. Each session shows its state, stops after 15 seconds and can be stopped immediately. Ordinary advertisement replay uses this radio's address; neither replay mode clones GATT services or pairing keys.
 - Expanded Wi-Fi/BLE attack menu with target review, bounded duration/rate, stop controls and driver-error reporting. New packet builders cover deauth/disassociation, authentication, EAPOL, sleep, SAE-commit, CSA/quiet and pairing-advert variants. These are experimental implementations; a single authentication request passed the driver check, but no peer response was observed. See [scope and validation limits](docs/MARAUDER-SCOPE.md).
 - **Infrared** home app: record a raw remote signal, transmit the selected signal once, save it to SD, and browse `.ir` libraries one button at a time. Large libraries remain on the card. [IR controls, formats and current limits](docs/INFRARED.md).
 - Optional SD vendor lookup at `/hackerphone/oui.bin`, generated with the original MIT [database builder](tools/build_vendor_db.py). No ChimeraBLE database or GPL application code is included. Random/private BLE addresses are not assigned an OUI vendor.
 - Dragon Detector's bounded parsers and signal filter are pinned to its 0.9.2 source. A device signature is evidence of a device family, not proof of malicious intent. RSSI is not a measured range or bearing.
-- [Marauder inventory](docs/MARAUDER-SCOPE.md) tracks remaining toolkit work. Full parity is still unfinished: attack effectiveness, complete beacon cloning and SAE exchanges, captive portals, BLE MITM/GATT cloning, network service scans, phone audio and SMS inbox reading remain open. The on-screen dial action remains gated until its voice audio path works.
+- **22 dedicated scanners** with AP security/WPS/PMF details, AP/client mapping, packet graphs, a handshake summary, selected-AP captures and Remote ID detail pages. Passive BLE is the default; optional active scanning requests additional advertised names.
+- **24 Wi-Fi/BLE transmission modes**, manual targets and 16-entry AP/client lists. Captured-beacon cloning preserves security information; SAE supports group-19 anti-clogging token retries. These are experimental capabilities, not a claim that every peer is affected.
+- **Connected network tools:** saved Wi-Fi profile, ping/ARP/TCP scans, hotspot and a local SD-backed captive portal. Saved observations reload as stale, and saved SSIDs can become a streamed beacon playlist.
+- **Tracker controls:** AirTag, Find My and DULT sound requests; a separately reviewed, timed Find My live sweep; legacy random-address replay. Sound writes are verified against an owned laptop fixture, not an audible tracker.
+- The [94-mode Marauder mapping](docs/MARAUDER-SCOPE.md) explicitly records implemented paths, experimental subsets and missing capabilities. GPS-dependent modes, OTA/SD updates, several auxiliary commands, peer-effect validation, phone audio and SMS inbox remain open. The on-screen dial action remains gated until its voice audio path works.
 
 ## Build and test
 

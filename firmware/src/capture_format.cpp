@@ -1,6 +1,12 @@
 #include "capture_format.h"
 #include <string.h>
 namespace hackerphone {
+bool wifiFrameHasAddress(const uint8_t* p,size_t n,const uint8_t address[6]){
+  if(!p||!address||n<10||(p[0]&3))return false;unsigned type=(p[0]>>2)&3;
+  if(type==1){if(!memcmp(p+4,address,6))return true;return n>=16&&!memcmp(p+10,address,6);}
+  if((type!=0&&type!=2)||n<24)return false;
+  return !memcmp(p+4,address,6)||!memcmp(p+10,address,6)||!memcmp(p+16,address,6)||(type==2&&(p[1]&3)==3&&n>=30&&!memcmp(p+24,address,6));
+}
 bool safeRelativePath(const char* p) {
   if(!p||!*p||strlen(p)>120||*p=='/')return false;
   const char* part=p;

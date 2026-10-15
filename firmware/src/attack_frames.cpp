@@ -10,7 +10,7 @@ const AttackDefinition attackDefinitions[] = {
   {"Named WiFi beacon",false,false,false},
   {"Random SSID beacons",false,false,false},
   {"SD SSID playlist",false,false,false},
-  {"Mimic AP name / BSSID",false,true,false},
+  {"Clone full AP beacon",false,true,false},
   {"Probe requests",false,false,false},
   {"Authentication requests",false,true,false},
   {"Deauthentication",false,true,false},
@@ -27,12 +27,21 @@ const AttackDefinition attackDefinitions[] = {
   {"BLE Flipper adverts",true,false,false},
   {"BLE Apple Juice",true,false,false},
   {"BLE Sour Apple",true,false,false},
-  {"BLE mixed pairing",true,false,false}
+  {"BLE mixed pairing",true,false,false},
+  {"AP clone / random BSSIDs",false,true,false},
+  {"Rickroll beacon playlist",false,false,false},
+  {"Funny beacon playlist",false,false,false}
 };
 static_assert(sizeof(attackDefinitions)/sizeof(*attackDefinitions)==unsigned(AttackMode::Count));
 bool unicastAddress(const uint8_t mac[6]) {
   if(!mac||(mac[0]&1))return false;
   uint8_t bits=0;for(unsigned i=0;i<6;++i)bits|=mac[i];return bits!=0;
+}
+bool parseMac(const char* text,uint8_t mac[6],bool requireUnicast){
+  if(!text||!mac)return false;size_t n=strlen(text);if(n!=12&&n!=17)return false;uint8_t value[6];
+  auto hex=[](char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:-1;};
+  for(unsigned i=0;i<6;++i){unsigned at=i*(n==17?3:2);int a=hex(text[at]),b=hex(text[at+1]);if(a<0||b<0||(n==17&&i<5&&text[at+2]!=':'))return false;value[i]=(a<<4)|b;}
+  if(requireUnicast&&!unicastAddress(value))return false;memcpy(mac,value,6);return true;
 }
 bool validAttackTarget(AttackMode mode,const AttackTarget& t) {
   if(unsigned(mode)>=unsigned(AttackMode::Count))return false;
@@ -57,10 +66,12 @@ size_t buildWifiAttack(uint8_t* out,size_t cap,AttackMode mode,const AttackTarge
   uint8_t b[256]{};const uint8_t broadcast[]={255,255,255,255,255,255};
   const uint8_t* dst=t.hasClient?t.client:broadcast;size_t n=0;size_t ssidLen=strlen(t.ssid);
   switch(mode) {
-    case AttackMode::Beacon:case AttackMode::RandomBeacons:case AttackMode::SsidList:
+    case AttackMode::Beacon:case AttackMode::RandomBeacons:case AttackMode::SsidList:case AttackMode::ApSpam:case AttackMode::Rickroll:case AttackMode::FunnyBeacons:
     case AttackMode::CloneBeacon:case AttackMode::ChannelSwitch:case AttackMode::Quiet: {
       char name[33];memcpy(name,t.ssid,sizeof(name));
       if(mode==AttackMode::RandomBeacons)snprintf(name,sizeof(name),"HP-%02X%02X%02X%02X",entropy[0],entropy[1],entropy[2],entropy[3]);
+      if(mode==AttackMode::Rickroll){const char* names[]={"Rick Astley","Never Gonna Give You Up","Rickroll radio demo","youtu.be/dQw4w9WgXcQ"};snprintf(name,sizeof(name),"%s",names[seq%4]);}
+      if(mode==AttackMode::FunnyBeacons){const char* names[]={"Wi Believe I Can Fi","404 Network Not Found","Packet Snack Bar","LAN Before Time","Router? I barely know her"};snprintf(name,sizeof(name),"%s",names[seq%5]);}
       const uint8_t* sender=attackDefinitions[unsigned(mode)].needsAp?t.bssid:source;
       n=makeBeacon(b,sizeof(b),sender,t.channel,*name?name:"HackerPhone-Lab");
       if(!n)return 0;le16(b+22,(seq&4095)<<4);

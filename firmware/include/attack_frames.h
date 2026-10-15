@@ -8,6 +8,7 @@ enum class AttackMode:uint8_t {
   Deauthentication, Disassociation, ActiveEapol, BadMessage, AssociationSleep,
   SaeCommit, ChannelSwitch, Quiet,
   SwiftPair, FastPair, Samsung, Flipper, AppleJuice, SourApple, BleMix,
+  ApSpam, Rickroll, FunnyBeacons,
   Count
 };
 struct AttackDefinition {const char* name;bool ble,needsAp,needsClient;};
@@ -19,6 +20,7 @@ struct AttackTarget {
   bool hasAp=false,hasClient=false;
 };
 bool unicastAddress(const uint8_t mac[6]);
+bool parseMac(const char* text,uint8_t mac[6],bool requireUnicast=true);
 bool validAttackTarget(AttackMode mode,const AttackTarget& target);
 // Pure packet construction: no radio, files, global state or heap allocation.
 // entropy is supplied by the caller; tests can reproduce every output.

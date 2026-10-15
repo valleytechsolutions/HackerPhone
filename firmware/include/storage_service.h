@@ -5,7 +5,7 @@ namespace hackerphone {
 struct StorageStatus {bool recording=false,error=false,vendorReady=false;uint32_t records=0,drops=0,bytes=0,vendors=0;char path[80]{};};
 extern StorageStatus storageStatus;
 void storageBegin();
-bool captureStart(bool eapolOnly=false);
+bool captureStart(bool eapolOnly=false,const uint8_t* targetAddress=nullptr);
 void captureStop();
 void capturePacket(const uint8_t* data,size_t n,size_t original,uint64_t micros);
 void storageTick(uint32_t now);
