@@ -125,9 +125,9 @@
     {
       "mode": "LV_ADD_SSID",
       "upstream_value": 14,
-      "status": "independent_subset",
-      "implementation": "Editable beacon SSID and saved SD SSID playlists",
-      "limits": "No complete upstream list editor or native Marauder JSON import; ASCII SSID playlist streamed from SD."
+      "status": "implemented",
+      "implementation": "SSID editor: add/delete/generate/import observed/clear/save/load; streamed SD beacon playlist",
+      "limits": "64 ASCII names, each 1..32 bytes; text import <=4 KiB. Separate Marauder AP JSON import/export is available and loads stale observations."
     },
     {
       "mode": "WIFI_ATTACK_BEACON_LIST",
@@ -232,7 +232,7 @@
       "upstream_value": 29,
       "status": "implemented",
       "implementation": "Selected-device signal hunt",
-      "limits": "RSSI trend and history; no measured distance, bearing, or verified audio feedback."
+      "limits": "RSSI trend and history; no measured distance or bearing. Hunt sonification is not implemented; notification audio is separate."
     },
     {
       "mode": "WIFI_SCAN_EVIL_PORTAL",
@@ -419,16 +419,16 @@
     {
       "mode": "WIFI_ATTACK_BAD_MSG",
       "upstream_value": 56,
-      "status": "experimental_subset_effect_unvalidated",
-      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
-      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; marked or observed AP/client lists",
+      "limits": "Up to 16 explicit AP/client pairs per session; fresh clients can populate a snapshot without starting it. No peer-effect test."
     },
     {
       "mode": "WIFI_ATTACK_BAD_MSG_TARGETED",
       "upstream_value": 57,
-      "status": "experimental_subset_effect_unvalidated",
-      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
-      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; marked or observed AP/client lists",
+      "limits": "Up to 16 explicit AP/client pairs per session; fresh clients can populate a snapshot without starting it. No peer-effect test."
     },
     {
       "mode": "WIFI_SCAN_TELNET",
@@ -454,16 +454,16 @@
     {
       "mode": "WIFI_ATTACK_SLEEP",
       "upstream_value": 61,
-      "status": "experimental_subset_effect_unvalidated",
-      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
-      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; marked or observed AP/client lists",
+      "limits": "Up to 16 explicit AP/client pairs per session; fresh clients can populate a snapshot without starting it. No peer-effect test."
     },
     {
       "mode": "WIFI_ATTACK_SLEEP_TARGETED",
       "upstream_value": 62,
-      "status": "experimental_subset_effect_unvalidated",
-      "implementation": "Selected client EAPOL M1 / association-power-management builders; AP/client lists",
-      "limits": "Explicit client per selected AP required; no automatic all-station walk and no peer-effect test."
+      "status": "experimental_effect_unvalidated",
+      "implementation": "Selected client EAPOL M1 / association-power-management builders; marked or observed AP/client lists",
+      "limits": "Up to 16 explicit AP/client pairs per session; fresh clients can populate a snapshot without starting it. No peer-effect test."
     },
     {
       "mode": "GPS_POI",
@@ -517,9 +517,9 @@
     {
       "mode": "BT_SCAN_AIRTAG_MON",
       "upstream_value": 70,
-      "status": "independent_subset",
-      "implementation": "Find My scanner, raw advertisements, payload-change counter and RSSI history",
-      "limits": "Address rotation is not resolved to a persistent identity. No ownership/key decryption."
+      "status": "implemented_unvalidated_detection_accuracy",
+      "implementation": "Find My scanner with per-address RSSI, last-seen age, raw advertisements, payload-change counter and RSSI history",
+      "limits": "Matches the pinned upstream monitor workflow. Address rotation is not resolved to a persistent identity; no ownership/key decryption."
     },
     {
       "mode": "WIFI_SCAN_CHAN_ACT",
@@ -573,9 +573,9 @@
     {
       "mode": "WIFI_ATTACK_SAE_COMMIT",
       "upstream_value": 78,
-      "status": "experimental_subset_effect_unvalidated",
+      "status": "experimental_effect_unvalidated",
       "implementation": "Group-19 scalar/point generation, stable client and anti-clogging token retry, per-AP list state",
-      "limits": "Hunting-and-pecking token layout; no H2E negotiation, successful SAE authentication, or live WPA3 response test."
+      "limits": "Commit/token workflow, not successful SAE authentication. No H2E negotiation or live WPA3 response test."
     },
     {
       "mode": "WIFI_ATTACK_CSA",
@@ -617,7 +617,7 @@
       "upstream_value": 84,
       "status": "implemented",
       "implementation": "Selected-device signal hunt",
-      "limits": "RSSI trend and history; no measured distance, bearing, or verified audio feedback."
+      "limits": "RSSI trend and history; no measured distance or bearing. Hunt sonification is not implemented; notification audio is separate."
     },
     {
       "mode": "BT_SCAN_IBEACON",

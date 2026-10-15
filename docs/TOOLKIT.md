@@ -126,3 +126,90 @@ Hotspot/portal mode uses a local AP at `192.168.4.1`, optionally WPA2 with an 8�
 | `NETWORK PORTALTEST` | Test the already running local portal with GET, a marked demo POST and DNS; writes a marked SD test record |
 
 Network probe IDs are: 0 host ping, 1 subnet ping, 2 subnet ARP, 3 common TCP ports on host, 4 all TCP ports on host, 5 Telnet, 6 SSH, 7 DNS, 8 HTTP, 9 HTTPS, 10 SMTP and 11 RDP service-port subnet sweeps. These services and all active modes need their own live validation; available controls are not a parity certificate.
+
+## 0.5 missions, lists and files
+
+Security → Recon missions records combined, Wi-Fi-only or BLE-only observations
+in a new `/hackerphone/missions/mission-NNNNN` directory. `events.jsonl` contains
+observations, repeats, departures, AP/client relationships, probe names and
+alerts; `manifest.json` records counts, completion and errors. Location is null
+because this board has no verified GNSS source. This is an original JSONL format,
+not a promise of compatibility with Marauder mission binary files. A bounded
+64-slot snapshot is taken each second, repeats at most every five seconds per
+device. Short-lived observations and excess events can be missed; raw PCAP is
+the packet-level recording option. Times are uptime, not UTC.
+
+SSID list editor stores up to 64 ASCII names of 1–32 bytes. Add/delete, import
+observed names, generate names, clear, save and load are available on screen.
+Left/Right chooses the entry to delete. Save selects the file as a beacon playlist;
+it does not start transmission. SSID text imports are limited to 4 KiB.
+
+AP-list JSON import/export uses Marauder's array fields `essid`, `bssid`, `channel`,
+`rssi`, `packets`, `sec`, `wps`, `man` and `stations`. Import validates the complete
+file before applying it, limits JSON to 32 KiB and total AP/client entries to 64,
+and loads entries as stale. Saved RSSI/packet counts are not treated as a live
+measurement. A in the browser imports an AP `.json` file. Other JSON documents
+remain accessible through USB/file export. AP JSON export is in Recon missions.
+
+In target lists, # marks/unmarks an observation. Marks prevent table eviction;
+marking all 64 slots leaves no room for newly discovered devices. Attack target
+settings can snapshot marked AP/client pairs or fresh clients of the selected AP
+into the bounded 16-pair list, and remove its final entry. USB can remove an
+arbitrary list index. Selection never transmits by itself.
+
+Radio MAC settings can randomize or restore the station/AP address, or copy the
+viewed Wi-Fi address. Stop radio/network tools first. Changes last until reboot;
+the driver address is read back before success is reported. This changes a radio
+address, not the selected device's services, credentials or identity.
+
+SD browser → # opens file actions: rename, copy, move to recoverable
+`/hackerphone/trash`, create folder, raw SPIFFS backup or explicit CSV upload.
+Writes are restricted to `/hackerphone`, never overwrite a destination and reject
+active capture/music/mission paths. Renaming a directory containing an active file
+is also rejected. SPIFFS backup reads the existing partition without mounting or
+changing it; its CRC manifest accompanies the new SD file. **Restore is not
+implemented**, because this sample's original recovery layout must be preserved.
+While a file operation is running, D in File actions cancels it and removes only
+its unfinished temporary file.
+
+Full/common TCP host scans now multiplex up to eight nonblocking connections
+with a shared 180 ms deadline, instead of serially waiting once per port. This
+reduces timeout overhead, but a filtered 65,535-port scan can still take minutes.
+Stop/cancel closes pending sockets; no response is not proof a host is absent.
+
+### Optional external CSV uploads
+
+The file-action review screen names WiGLE or WDG. A starts that selected upload;
+D cancels. It requires a joined Wi-Fi network, a WiGLE-format CSV supplied on SD,
+and `/hackerphone/upload.json` containing `wigle_basic` (base64 API username/token)
+or `wdg_key`. Keep this credential file private. Do not commit it. No upload runs
+automatically. TLS certificate verification remains enabled; an explicit upload
+may synchronize time with NTP. A receipt is written only after server acceptance.
+
+HackerPhone's unlocated CSV/mission logs are rejected by the WiGLE header check.
+Files beginning with the WiGLE header still require valid, appropriately sourced
+location rows; the remote service validates their contents. Local QA only tested
+rejection of non-WiGLE data. **No authenticated WiGLE/WDG upload has been tested.**
+Cancellation after sending may leave the server outcome uncertain; the firmware
+does not retry automatically.
+
+| Command | Action |
+|---|---|
+| `MISSION`, `MISSION START 0..2`, `MISSION STOP`, `MISSION STATUS` | Mission UI, combined/Wi-Fi/BLE start, stop and counters |
+| `PLAYLIST`, `SSIDS`, `SSID ADD name`, `SSID REMOVE index` | Editor UI, current names, add/remove |
+| `SSID GENERATE count`, `SSID CLEAR`, `SSID SAVE`, `SSID LOAD path` | Generate, clear, save, validate/load |
+| `LIST EXPORTJSON`, `LIST IMPORTJSON path`, `LIST REMOVE index` | AP JSON interchange or remove a stopped observation |
+| `ADD AP mac channel name`, `ADD STATION mac ap-index` | Add a manual stale target while stopped |
+| `SELECT index`, `SELECT ALL`, `SELECT NONE`, `SELECT CONTAINS text`, `SELECT LIST` | Mark/unmark and list selected observations |
+| `ATTACK MARKED`, `ATTACK CLIENTS`, `ATTACK REMOVE index` | Populate/edit the AP/client target snapshot, without starting it |
+| `MACS`, `MAC STATUS`, `MAC RANDOM AP`, `MAC RANDOM STA` | MAC menu, actual addresses, randomize |
+| `MAC AP address`, `MAC STA address`, `MAC RESET AP`, `MAC RESET STA` | Set or restore an idle interface address |
+| `FILE STATUS`, `FILE CANCEL`, `FILE MKDIR path`, `FILE TRASH path` | File operation state/cancel, new folder, recoverable trash |
+| `FILE COPY source\|destination`, `FILE RENAME source\|destination` | Copy/rename with a literal pipe delimiter |
+| `BACKUP SPIFFS` | Read-only SPIFFS-to-SD backup, no restore |
+| `UPLOAD BEGIN size crc32hex path`, `UPLOAD DATA offset hexbytes`, `UPLOAD END` | Bounded CRC-checked SD upload; prefer `tools/sd_upload.py` |
+| `UPLOAD WIGLE path`, `UPLOAD WDG path`, `UPLOAD STATUS`, `UPLOAD CANCEL` | Explicit external CSV upload and status |
+
+All paths in this table are absolute SD paths under `/hackerphone`. Range notation
+means supply one number. [Music, RTTTL, LED and side-button controls](DAILY-USE.md)
+have their own guide.

@@ -10,16 +10,24 @@ Identified on 2026-10-14. The owner confirms MakerPhone 2.0 engineering hardware
 | Main I²C | SDA 47 / SCL 48, 100 kHz | Factory boot log |
 | Keypad | XL9555 at 0x20 and 0x21, interrupt GPIO 9/10 | Factory boot log and 23-entry input mapping table |
 | Backlight | AW9523B at 0x5B, P1_0 active low | Factory GPIO configuration and backlight routine |
-| Audio amp | XL9555 U9 P1_1 gate | Factory boot log; kept muted in initial custom build |
-| I²S speaker/mic | BCLK 39, WS 40, DOUT 38, DIN 41 | Factory boot log; audio adapter not yet implemented |
+| Audio amp | XL9555 U9 P1_1 active-high gate | Factory boot log; output confirmed through headphones in 0.5 |
+| I²S speaker/mic | BCLK 39, WS 40, DOUT 38, DIN 41 | Factory boot log; output uses I2S1, stereo 32-bit slots; microphone/voice bridge pending |
+| Eight LEDs | AW9523B P0_2..6 and P1_5..7, dim registers 0x26–0x2A, 0x2D–0x2F | Eight-entry factory hardware table; all eight physically confirmed in 0.5 |
 | SD SPI | CS 34, MOSI 35, SCK 36, MISO 37 | Factory boot log; 3840 MB mounted there |
 | Modem | Quectel EG91-NAX, North American variant | Factory AT identification log |
 | Modem UART | UART1 115200 8N1, TX 17, RX 18, no CTS/RTS | UART configuration in saved app |
 | Modem control | GPIO12 power-key inverting driver (2.5 s HIGH pulse); GPIO16 reset inverting driver (LOW released); GPIO11 sleep/wake | Factory control routine and diagnostic text |
 | Power button | GPIO2, active HIGH, external divider, no internal pulls | Factory boot log |
+| Power latch | XL9555 U9 P1_0: input/floating normally, driven LOW to shut down | Factory power routine/diagnostics; physical battery-only shutdown acceptance pending |
 | IR expansion module | RX GPIO42 with pull-up; TX GPIO45 inverted, idle HIGH; factory carrier 38 kHz | Factory module identification (`0xff13`) and its receiver/LEDC initialization |
 
 These are recovered hardware assignments, not copied vendor application routines. A new adapter implements them using public peripheral APIs. The full engineering firmware and disassembly remain private and are not redistributed or assigned an open-source license.
+
+No vibration-motor pin or driver has been established for this sample. Buzzing
+reported only during tone playback does not independently establish a motor.
+LED/backlight/amp control preserves unrelated expander pins. Audio, SD and radio
+workers run without holding the main I²C bus; amp requests are applied by the UI
+loop. The loop stack is 16 KiB and the MP3 worker stack/buffers use PSRAM.
 
 The IR adapter uses ESP-IDF RMT capture/transmission with hardware carrier removal for the raw photodiode. Its receive polarity and optical performance still require testing with a physical remote. The selected carrier is an assumption for learning, not a frequency measurement. No module-slot power or identification-expander registers are guessed or written. Startup drives the identified inverted emitter HIGH (off); RMT resources are initialized only when recording or transmitting.
 

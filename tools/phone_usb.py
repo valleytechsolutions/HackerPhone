@@ -21,7 +21,7 @@ class PhoneLink:
         if len(data)!=n:raise TimeoutError('Incomplete USB binary transfer')
         return bytes(data)
     def file_bytes(self,name):
-        if not re.fullmatch(r'[A-Za-z0-9_.\-/]{1,120}',name) or any(p in ('','.','..') for p in name.split('/')):
+        if not re.fullmatch(r'[A-Za-z0-9_ .\-/]{1,120}',name) or any(p in ('','.','..') for p in name.split('/')):
             raise ValueError('Use a relative path below /hackerphone')
         header=self.command('FILEINFO '+name,b'HP_FILEINFO ');size=int(header.split()[1]);result=bytearray()
         while len(result)<size:

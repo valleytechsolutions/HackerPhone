@@ -19,12 +19,27 @@
 #include "saved_lists.h"
 #include "tracker_service.h"
 #include <esp_wifi.h>
+#include <esp_sleep.h>
+#include "music_service.h"
+#include "led_service.h"
+#include "device_controls.h"
+#include "list_editor.h"
+#include "mission_service.h"
+#include "file_service.h"
+#include "tone_service.h"
+#include "upload_service.h"
 
 using namespace hackerphone;
 static mp24::ModemTransport transport;
 static PhoneCore phone(transport);
-enum class Screen {Home,Dial,Messages,Compose,ConfirmSms,Recon,Targets,Hunt,Files,FileView,Settings,Diagnostics,Incoming,Tools,Channels,Alerts,TargetTools,TargetInfo,Gatt,Lab,LabConfirm,Attacks,AttackConfirm,AttackRun,Infrared,IrSignal,Scanners,PacketMonitor,Network,NetEdit,NetReview,NetResults,TrackerConfirm,AttackConfig,SavedLists,TrackerLiveConfirm,TrackerLiveRun};
+enum class Screen {Home,Dial,Messages,Compose,ConfirmSms,Recon,Targets,Hunt,Files,FileView,Settings,Diagnostics,Incoming,Tools,Channels,Alerts,TargetTools,TargetInfo,Gatt,Lab,LabConfirm,Attacks,AttackConfirm,AttackRun,Infrared,IrSignal,Scanners,PacketMonitor,Network,NetEdit,NetReview,NetResults,TrackerConfirm,AttackConfig,SavedLists,TrackerLiveConfirm,TrackerLiveRun,Music,Leds,Playlist,Mission,MacSettings,FileActions,TrashConfirm,Tones,UploadReview};
 static Screen screen=Screen::Home;
+static PowerButton powerButton;
+static bool locked=false,shuttingDown=false,cutRequested=false;
+static uint32_t shutdownAt=0,volumeAt=0,volumeSaveAt=0;
+static int nextMusic=0;
+static bool musicBrowsing=false;static unsigned playlistIndex=0,uploadChoice=0;
+
 static int menu=0,targetIndex=0,fileIndex=0,fileCount=0;
 static String recipient,message,dialNumber,currentPath="/",filePreview;
 static String fileNames[32],filePaths[32];static bool fileDirs[32];
@@ -55,7 +70,7 @@ static bool targetVisible(const Target& t){return scanMatches(t,ScanProfile(targ
 static void cacheVendor(){vendorName[0]=0;auto& t=recon.targets[targetIndex];if(t.used)lookupVendor(t.mac,t.ble,t.addressType,vendorName);}
 static void nextTarget(int step){for(unsigned i=0;i<ReconCore::Capacity;++i){targetIndex=(targetIndex+ReconCore::Capacity+step)%ReconCore::Capacity;if(targetVisible(recon.targets[targetIndex]))break;}recon.pinned=targetVisible(recon.targets[targetIndex])?targetIndex:-1;cacheVendor();}
 static bool startListening(){irStop();trackerLiveStop();attackStop();labStop();networkStop();if(networkStatus().busy)return false;auto g=gattStatus();if(g.busy||g.connected){gattStop();return false;}return radioStart();}
-static void stopTools(){irStop();trackerLiveStop();attackStop();labStop();networkStop();gattStop();radioStop();captureStop();recon.selected=recon.pinned=-1;}
+static void stopTools(){if(logging){session.flush();session.close();logging=false;}missionStop();irStop();trackerLiveStop();attackStop();labStop();networkStop();gattStop();radioStop();captureStop();recon.selected=recon.pinned=-1;}
 static void openInfrared(){stopTools();if(logging){session.flush();session.close();logging=false;}screen=Screen::Infrared;menu=0;}
 
 static const char* simName(){switch(phone.state().sim){case Sim::Absent:return "NO SIM";case Sim::Ready:return phone.state().registered()?"REGISTERED":"SEARCHING";case Sim::PinRequired:return "SIM PIN";case Sim::PukRequired:return "SIM PUK";case Sim::Fault:return "SIM ERROR";default:return phone.state().online?"CHECKING SIM":"MODEM START";}}
@@ -137,11 +152,15 @@ static void digitInput(uint8_t digit,uint32_t now){
 }
 static void key(mp24::Key k,uint32_t now){
   if(k==mp24::None)return;
+  if(shuttingDown)return;
+  if(k==mp24::VolumeUp||k==mp24::VolumeDown){musicVolume(int(musicStatus().volume)+(k==mp24::VolumeUp?5:-5));volumeAt=volumeSaveAt=now;return;}
+  if(locked)return;
+
   if(attackStatus.active&&screen!=Screen::AttackRun)attackStop();
   if(unsigned(k)<=unsigned(mp24::K9)){digitInput(unsigned(k),now);return;}
-  if(k==mp24::C){irStop();trackerLiveStop();attackStop();labStop();networkStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;return;}
+  if(k==mp24::C){missionStop();irStop();trackerLiveStop();attackStop();labStop();networkStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;return;}
   bool accept=k==mp24::A||k==mp24::Enter;
-  if(screen==Screen::Home){if(k==mp24::Down||k==mp24::Right)menu=(menu+1)%7;if(k==mp24::Up||k==mp24::Left)menu=(menu+6)%7;if(accept){switch(menu){case 0:screen=Screen::Dial;break;case 1:screen=Screen::Messages;break;case 2:screen=Screen::Tools;menu=0;break;case 3:openInfrared();break;case 4:screen=Screen::Files;irBrowsing=false;if(mp24::cardReady)files();break;case 5:screen=Screen::Settings;menu=0;break;case 6:screen=Screen::Diagnostics;break;}}return;}
+  if(screen==Screen::Home){if(k==mp24::Down||k==mp24::Right)menu=(menu+1)%8;if(k==mp24::Up||k==mp24::Left)menu=(menu+7)%8;if(accept){switch(menu){case 0:screen=Screen::Dial;break;case 1:screen=Screen::Messages;break;case 2:screen=Screen::Tools;menu=0;break;case 3:openInfrared();break;case 4:screen=Screen::Files;irBrowsing=false;if(mp24::cardReady)files();break;case 5:screen=Screen::Settings;menu=0;break;case 6:screen=Screen::Diagnostics;break;case 7:screen=Screen::Music;break;}}return;}
   if(screen==Screen::Incoming){if(accept)notify("Voice audio port pending");if(k==mp24::B)showResult(phone.hangup(now));return;}
   if(screen==Screen::Dial){
     if(k==mp24::Star&&dialNumber.isEmpty())dialNumber="+";
@@ -156,7 +175,7 @@ static void key(mp24::Key k,uint32_t now){
   }
   if(screen==Screen::Recon){if(accept){browse(0);}if(k==mp24::D){if(radioRunning)radioStop();else startListening();}if(k==mp24::B){screen=Screen::Tools;menu=0;}return;}
   if(screen==Screen::Tools){
-    moveMenu(k,17);
+    moveMenu(k,20);
     if(accept){switch(menu){
       case 0:startRecon();break;
       case 1:case 2:case 3:radioSetMode(RadioMode::Wifi);if(startListening())browse(menu);else notify("Radio busy; retry shortly");break;
@@ -171,7 +190,7 @@ static void key(mp24::Key k,uint32_t now){
       case 13:if(startListening())screen=Screen::PacketMonitor;break;
       case 14:stopTools();screen=Screen::Network;menu=0;break;
       case 15:screen=Screen::SavedLists;menu=0;break;
-      case 16:screen=Screen::TrackerLiveConfirm;break;
+      case 16:screen=Screen::TrackerLiveConfirm;break;case 17:screen=Screen::Mission;menu=0;break;case 18:screen=Screen::Playlist;menu=0;break;case 19:screen=Screen::MacSettings;menu=0;break;
     }}if(k==mp24::B){screen=Screen::Home;menu=0;}return;
   }
   if(screen==Screen::SavedLists){moveMenu(k,6);if(accept){if(menu<3)notify(saveReconList(menu==0?0:menu==1?1:4)?savedListMessage:"SD save failed");
@@ -204,7 +223,7 @@ static void key(mp24::Key k,uint32_t now){
       if(ok){if(networkField==0)networkSsid=networkEdit;else if(networkField==1)networkPassword=networkEdit;else if(networkField==2)networkHost=networkEdit;
         else if(networkField==3){memcpy(attackOptions.target.bssid,mac,6);attackOptions.target.hasAp=true;attackOptions.target.hasClient=false;}
         else if(networkField==4){memcpy(attackOptions.target.client,mac,6);attackOptions.target.hasClient=true;}
-        else snprintf(attackOptions.target.ssid,33,"%s",networkEdit.c_str());networkEdit="";screen=networkField<3?Screen::Network:Screen::AttackConfig;menu=networkField<3?networkField:0;}}return;
+        else if(networkField==7){String destination=currentPath+(currentPath=="/"?"":"/")+networkEdit;notify(fileRename(filePaths[fileIndex].c_str(),destination.c_str())?"Renamed":"Rename unavailable");}else if(networkField==8){String path=currentPath+(currentPath=="/"?"":"/")+networkEdit;notify(safeSdPath(path.c_str())&&path.startsWith("/hackerphone/")&&!SD.exists(path)&&SD.mkdir(path)?"Folder created":"Invalid folder");}else if(networkField==6){if(!ssidAdd(networkEdit.c_str()))notify("Invalid / duplicate / full");}else snprintf(attackOptions.target.ssid,33,"%s",networkEdit.c_str());networkEdit="";if(networkField>=7)files();screen=networkField>=7?Screen::Files:networkField==6?Screen::Playlist:networkField<3?Screen::Network:Screen::AttackConfig;menu=networkField<3?networkField:0;}}return;
   }
   if(screen==Screen::NetReview){if(k==mp24::B){screen=Screen::Network;menu=networkSelection;}if(accept){bool ok=false;if(!phone.state().phonePriority())ok=networkSelection==7||networkSelection==8?networkHotspot(networkSsid.c_str(),networkPassword.c_str(),networkSelection==8):networkProbe(NetworkProbe(networkSelection-11),networkHost.c_str());
       if(ok){screen=Screen::NetResults;networkResult=0;}else notify("Needs connection / idle tool");}return;}
@@ -212,6 +231,7 @@ static void key(mp24::Key k,uint32_t now){
     if(k==mp24::D)networkCancelProbe();if(k==mp24::Hash)notify(networkSaveResults()?"Results saved to SD":"Stop scan / check SD");if(k==mp24::B){screen=Screen::Network;menu=9;}return;}
   if(screen==Screen::Targets){
     if(k==mp24::Down||k==mp24::Right)nextTarget(1);if(k==mp24::Up||k==mp24::Left)nextTarget(-1);
+    if(k==mp24::Hash&&targetVisible(recon.targets[targetIndex])){recon.targets[targetIndex].marked=!recon.targets[targetIndex].marked;notify(recon.targets[targetIndex].marked?"Marked / retained":"Unmarked");}
     if(targetVisible(recon.targets[targetIndex])){if(accept){recon.selected=targetIndex;screen=Screen::Hunt;}if(k==mp24::D){screen=Screen::TargetTools;menu=0;}}
     if(k==mp24::B){screen=Screen::Tools;menu=0;recon.pinned=-1;}return;
   }
@@ -248,11 +268,11 @@ static void key(mp24::Key k,uint32_t now){
     if(accept){if(unsigned(menu)<modes){pendingAttack=AttackMode(menu);screen=Screen::AttackConfirm;}else if(unsigned(menu)==modes){screen=Screen::AttackConfig;menu=0;}else if(unsigned(menu)==modes+1){screen=Screen::Lab;menu=0;}else{attackStop();labStop();notify("Transmission stopped");}}
     if(k==mp24::B){attackStop();screen=Screen::Tools;menu=9;}return;
   }
-  if(screen==Screen::AttackConfig){moveMenu(k,9);if(accept){auto& t=attackOptions.target;switch(menu){
+  if(screen==Screen::AttackConfig){moveMenu(k,12);if(accept){auto& t=attackOptions.target;switch(menu){
     case 0:case 1:case 2:networkField=menu+3;networkEdit=menu==0?macText(t.bssid):menu==1?macText(t.client):String(t.ssid);previousDigit=255;screen=Screen::NetEdit;break;
     case 3:t.channel=t.channel%11+1;break;case 4:t.destinationChannel=t.destinationChannel%11+1;break;
     case 5:t.hasClient=false;memset(t.client,0,6);break;case 6:notify(attackListAdd()?"Target copied into list":"Invalid target / list full");break;
-    case 7:attackOptions.useList=!attackOptions.useList;break;case 8:attackListClear();notify("Attack list cleared");break;
+    case 7:attackOptions.useList=!attackOptions.useList;break;case 8:attackListClear();notify("Attack list cleared");break;case 9:notify((String("Added clients: ")+attackListObservedClients()).c_str());break;case 10:notify(attackListCount()&&attackListRemove(attackListCount()-1)?"Removed last target":"List is empty");break;case 11:notify((String("Marked targets added: ")+markedAttackTargets()).c_str());break;
   }}if(k==mp24::B){screen=Screen::Attacks;menu=unsigned(AttackMode::Count);}return;}
   if(screen==Screen::AttackConfirm){
     if(k==mp24::Hash)attackOptions.useList=!attackOptions.useList;
@@ -282,30 +302,73 @@ static void key(mp24::Key k,uint32_t now){
     if(accept&&!phone.state().phonePriority())irSend();if(k==mp24::D)irSave();
     if(k==mp24::Right)irNext();if(k==mp24::Left)irPrevious();return;
   }
+  if(screen==Screen::Tones){moveMenu(k,11);if(accept||k==mp24::Left||k==mp24::Right){if(menu<4){if(accept)tonePreview(menu);else {toneEnabled^=1u<<menu;tonesSave();}}
+    else if(menu==4){toneVolume=std::max(0,std::min(100,int(toneVolume)+(k==mp24::Left?-5:5)));tonesSave();}
+    else if(menu<9){String path=String("/hackerphone/tones/")+(menu==5?"call":menu==6?"sms":menu==7?"recon":"tool")+".rtttl";notify(toneLoad(menu-5,path.c_str())?"RTTTL loaded from SD":"Missing or invalid RTTTL");}
+    else if(menu==9){for(unsigned i=0;i<4;++i)toneReset(i);notify("Retro defaults restored");}else musicStop();}
+    if(k==mp24::B){screen=Screen::Settings;menu=11;}return;}
+  if(screen==Screen::FileActions){moveMenu(k,7);if(k==mp24::D&&fileBusy()){fileCancel();notify("File operation cancelled");}if(accept){if(menu==0){networkField=7;networkEdit=fileNames[fileIndex];previousDigit=255;screen=Screen::NetEdit;}
+    else if(menu==1){String destination=filePaths[fileIndex]+".copy";notify(fileCopy(filePaths[fileIndex].c_str(),destination.c_str())?"Copy started": "Copy unavailable");}
+    else if(menu==2)screen=Screen::TrashConfirm;else if(menu==3){networkField=8;networkEdit="";previousDigit=255;screen=Screen::NetEdit;}
+    else if(menu==4)notify(fileBackupSpiffs()?"Backup started (read only)":"Backup unavailable");else {uploadChoice=menu-5;screen=Screen::UploadReview;}}if(k==mp24::B)screen=Screen::Files;return;}
+  if(screen==Screen::UploadReview){if(k==mp24::B)screen=Screen::FileActions;if(accept)notify(uploadStart(uploadChoice,filePaths[fileIndex].c_str())?"Upload started":uploadStatus().message);if(k==mp24::D)uploadCancel();return;}
+  if(screen==Screen::TrashConfirm){if(k==mp24::B)screen=Screen::FileActions;if(accept){notify(fileTrash(filePaths[fileIndex].c_str())?"Moved to SD trash":"Move unavailable");files();screen=Screen::Files;}return;}
+  if(screen==Screen::Playlist){moveMenu(k,7);if(k==mp24::Left&&ssidCount())playlistIndex=(playlistIndex+ssidCount()-1)%ssidCount();if(k==mp24::Right&&ssidCount())playlistIndex=(playlistIndex+1)%ssidCount();if(accept){switch(menu){
+    case 0:networkField=6;networkEdit="";previousDigit=255;screen=Screen::NetEdit;break;
+    case 1:notify(ssidRemove(playlistIndex)?"SSID removed":"List empty");if(playlistIndex>=ssidCount())playlistIndex=0;break;
+    case 2:notify(ssidGenerate(std::min(10u,64-ssidCount()))?"Generated up to 10 SSIDs":"List full");break;
+    case 3:notify(ssidSave()?"Saved / beacon list selected":"Save failed");break;
+    case 4:notify(ssidLoad(attackOptions.ssidPath)?"Playlist loaded":"Select a text file first");break;
+    case 5:for(auto& t:recon.targets)if(t.used&&!t.ble&&(t.accessPoint||t.probe))ssidAdd(t.name);notify("Observed SSIDs added");break;
+    case 6:ssidClear();playlistIndex=0;notify("Editor cleared");break;}}
+    if(k==mp24::B){screen=Screen::Tools;menu=18;}return;
+  }
+  if(screen==Screen::Mission){moveMenu(k,6);if(accept){if(menu<3){stopTools();if(logging){session.flush();session.close();logging=false;}notify(missionStart(menu)?"Mission started": "Mission needs idle radio/SD");}
+    else if(menu==3){missionStop();notify(mission.message);}else if(menu==4){currentPath="/hackerphone/missions";irBrowsing=musicBrowsing=false;filePage=0;files();screen=Screen::Files;}else notify(targetsJsonSave()?"Marauder JSON saved":"Export failed");}
+    if(k==mp24::B){screen=Screen::Tools;menu=17;}return;
+  }
+  if(screen==Screen::MacSettings){moveMenu(k,6);if(accept){bool ok=false;if(menu<2)ok=radioRandomMac(menu==0);else if(menu<4)ok=radioMac(menu==2,nullptr);else{auto& t=recon.targets[targetIndex];if(t.used&&!t.ble)ok=radioMac(menu==4,t.mac);}notify(ok?"MAC applied until reboot":"Stop network/radio first");}if(k==mp24::B){screen=Screen::Tools;menu=19;}return;}
+  if(screen==Screen::Music){
+    if(accept){auto m=musicStatus();if(m.busy)musicPause();else if(*m.path)musicPlay(m.path);}if(k==mp24::D){musicStop();nextMusic=0;}
+    if(k==mp24::Left||k==mp24::Right){musicStop();nextMusic=k==mp24::Left?-1:1;}
+    if(k==mp24::Hash){musicRepeat(!musicStatus().repeat);preferences.putBool("repeat",musicStatus().repeat);}
+    if(k==mp24::Up){musicBrowsing=true;irBrowsing=false;currentPath="/hackerphone/music";if(!SD.exists(currentPath))SD.mkdir(currentPath);filePage=0;files();screen=Screen::Files;}
+    if(k==mp24::B){screen=Screen::Home;menu=7;}return;
+  }
+  if(screen==Screen::Leds){moveMenu(k,16);if(accept||k==mp24::Left||k==mp24::Right){
+    if(menu==0)ledSettings.pattern=LedPattern((unsigned(ledSettings.pattern)+1)%unsigned(LedPattern::Count));
+    else if(menu==1)ledSettings.brightness=uint8_t(std::max(0,std::min(255,int(ledSettings.brightness)+(k==mp24::Left?-16:16))));
+    else if(menu==2)ledsTest(now);else if(menu<7)ledSettings.notifications^=1u<<(menu-3);
+    else if(menu==7)ledSettings.mask=ledSettings.mask?0:255;else ledSettings.mask^=1u<<(menu-8);
+    ledsSave();}if(k==mp24::B){screen=Screen::Settings;menu=8;}return;
+  }
   if(screen==Screen::Files){
+    if(k==mp24::Hash&&fileCount){if(logging){session.flush();session.close();logging=false;}screen=Screen::FileActions;menu=0;return;}
     if(k==mp24::D&&fileCount&&!fileDirs[fileIndex]&&fileNames[fileIndex].endsWith(".txt")&&filePaths[fileIndex].startsWith("/hackerphone/")&&filePaths[fileIndex].length()<sizeof(attackOptions.ssidPath)){
       snprintf(attackOptions.ssidPath,sizeof(attackOptions.ssidPath),"%s",filePaths[fileIndex].c_str());notify("SSID playlist selected");return;}
     if(k==mp24::Down&&fileCount)fileIndex=(fileIndex+1)%fileCount;if(k==mp24::Up&&fileCount)fileIndex=(fileIndex+fileCount-1)%fileCount;
     if(k==mp24::Left&&filePage){--filePage;files();}if(k==mp24::Right&&fileMore){++filePage;files();}
-    if(k==mp24::B){if(irBrowsing&&currentPath=="/hackerphone/ir"){screen=Screen::Infrared;menu=1;}else if(currentPath=="/"){screen=Screen::Home;menu=0;}else{int slash=currentPath.lastIndexOf('/');currentPath=slash<=0?"/":currentPath.substring(0,slash);filePage=0;files();}}
-    if(accept&&fileCount){if(fileDirs[fileIndex]){currentPath=filePaths[fileIndex];filePage=0;files();}else if(fileNames[fileIndex].endsWith(".hpl")){stopTools();if(loadReconList(filePaths[fileIndex].c_str()))browse(0);notify(savedListMessage);}else if(irBrowsing&&fileNames[fileIndex].endsWith(".ir")){irOpen(filePaths[fileIndex].c_str());screen=Screen::IrSignal;}else{File file=SD.open(filePaths[fileIndex]);filePreview="";while(file&&file.available()&&filePreview.length()<168){char c=file.read();filePreview+=c>=32&&c<127?c:' ';}file.close();screen=Screen::FileView;}}return;
+    if(k==mp24::B){if(musicBrowsing&&currentPath=="/hackerphone/music"){screen=Screen::Music;musicBrowsing=false;}else if(irBrowsing&&currentPath=="/hackerphone/ir"){screen=Screen::Infrared;menu=1;}else if(currentPath=="/"){screen=Screen::Home;menu=0;}else{int slash=currentPath.lastIndexOf('/');currentPath=slash<=0?"/":currentPath.substring(0,slash);filePage=0;files();}}
+    if(accept&&fileCount){if(fileDirs[fileIndex]){currentPath=filePaths[fileIndex];filePage=0;files();}else if(fileNames[fileIndex].endsWith(".mp3")||fileNames[fileIndex].endsWith(".MP3")){if(musicPlay(filePaths[fileIndex].c_str())){screen=Screen::Music;musicBrowsing=false;}else notify("Stop current track first");}else if(fileNames[fileIndex].endsWith(".json")){stopTools();if(targetsJsonLoad(filePaths[fileIndex].c_str()))browse(0);else notify("Not a valid AP list JSON");}else if(fileNames[fileIndex].endsWith(".hpl")){stopTools();if(loadReconList(filePaths[fileIndex].c_str()))browse(0);notify(savedListMessage);}else if(irBrowsing&&fileNames[fileIndex].endsWith(".ir")){irOpen(filePaths[fileIndex].c_str());screen=Screen::IrSignal;}else{File file=SD.open(filePaths[fileIndex]);filePreview="";while(file&&file.available()&&filePreview.length()<168){char c=file.read();filePreview+=c>=32&&c<127?c:' ';}file.close();screen=Screen::FileView;}}return;
   }
   if(screen==Screen::FileView){if(k==mp24::B)screen=Screen::Files;return;}
   if(screen==Screen::Settings){
-    moveMenu(k,7);
+    moveMenu(k,12);
     if(accept){switch(menu){case 0:setTheme(themeIndex+1);break;case 1:if(radioRunning)radioStop();else startListening();break;
       case 2:radioSetMode(RadioMode((unsigned(radioMode)+1)%3));break;case 3:channelLock=(channelLock+1)%12;break;
-      case 4:if(logging){session.flush();session.close();logging=false;}else if(!startLog())notify("SD log unavailable");break;case 5:phone.begin(now);break;case 6:radioSetBleActive(!bleActiveScan);preferences.putBool("bleactive",bleActiveScan);break;}}
+      case 4:if(logging){session.flush();session.close();logging=false;}else if(!startLog())notify("SD log unavailable");break;case 5:phone.begin(now);break;case 6:radioSetBleActive(!bleActiveScan);preferences.putBool("bleactive",bleActiveScan);break;case 7:screen=Screen::Music;break;case 8:screen=Screen::Leds;menu=0;break;case 9:notify(musicTone()?"Audio test playing":"Stop current track first");break;case 10:locked=true;mp24::backlight(false);break;case 11:screen=Screen::Tones;menu=0;break;}}
     if(k==mp24::B){screen=Screen::Home;menu=0;}return;
   }
   if(k==mp24::B)screen=Screen::Home;
 }
 static void render(uint32_t now){
   auto& f=mp24::frame;
+  if(shuttingDown){header("POWER OFF");text(12,49,"Saving and stopping...");text(12,68,"Release red button",theme().accent);text(12,90,"USB may keep power on",theme().muted);mp24::present();return;}
+  if(locked){f.fillSprite(TFT_BLACK);text(56,42,"LOCKED",theme().accent);text(14,65,"Tap red button to wake");if(volumeAt&&uint32_t(now-volumeAt)<1500)text(45,86,String("Volume ")+musicStatus().volume+"%");mp24::present();return;}
   if(screen==Screen::Home){
     header("HACKERPHONE");f.setSwapBytes(true);f.pushImage(79,30,vtsWidth,vtsHeight,vtsPixels);
-    static const char* names[]={"Phone","Messages","Security","Infrared","SD files","Settings","Hardware"};
-    for(int row=0,first=menu/6*6;row<6&&first+row<7;++row){int i=first+row;if(i==menu)f.fillRoundRect(2,33+row*13,75,12,2,theme().selection);else f.fillRect(2,33+row*13,75,12,theme().background);text(5,35+row*13,names[i]);}
+    static const char* names[]={"Phone","Messages","Security","Infrared","SD files","Settings","Hardware","Music"};
+    for(int row=0,first=menu/6*6;row<6&&first+row<8;++row){int i=first+row;if(i==menu)f.fillRoundRect(2,33+row*13,75,12,2,theme().selection);else f.fillRect(2,33+row*13,75,12,theme().background);text(5,35+row*13,names[i]);}
     footer("A:Open  C:Home");
   }else if(screen==Screen::Dial){header("PHONE");text(5,35,"Number (* for +)",theme().muted);wrap(5,49,dialNumber,24,2);text(5,82,"Voice audio port pending",TFT_ORANGE);text(5,97,"No calls sent by USB tests",TFT_DARKGREY);footer("A:Call  B:Erase  C:Home");}
   else if(screen==Screen::Messages){header("NEW MESSAGE");text(5,35,"To (* for +)",theme().muted);wrap(5,49,recipient,24,2);text(5,87,"Write without a SIM.",theme().muted);text(5,99,"Sending needs service.",theme().muted);footer("A:Write  B:Erase");}
@@ -337,10 +400,22 @@ static void render(uint32_t now){
         text(5,99,String(t.peak)+" peak / "+t.signal.direction(),theme().muted);
       }else{text(5,70,macText(t.mac),theme().muted);text(5,82,String(*vendorName?vendorName:addressKind(t.mac,t.ble,t.addressType)).substring(0,25),theme().muted);text(5,95,String(confidence(t.match.confidence))+" / "+t.packets+" frames",theme().muted);}
     }footer(screen==Screen::Hunt?"Signal only  B:Back":"Up/Dn A:Hunt D:More");
-  }else if(screen==Screen::Files){header("SD FILE BROWSER");text(5,34,mp24::cardReady?currentPath.substring(0,19)+" p"+String(filePage+1):"SD unavailable");int first=(fileIndex/6)*6;for(int row=0;row<6&&first+row<fileCount;++row){int i=first+row;if(i==fileIndex)f.fillRect(1,47+row*11,158,11,theme().selection);text(4,48+row*11,String(fileDirs[i]?"+ ":"  ")+fileNames[i].substring(0,23));}footer("A:Open B:Up L/R:Page");}
+  }else if(screen==Screen::Files){header("SD FILE BROWSER");text(5,34,mp24::cardReady?currentPath.substring(0,19)+" p"+String(filePage+1):"SD unavailable");int first=(fileIndex/6)*6;for(int row=0;row<6&&first+row<fileCount;++row){int i=first+row;if(i==fileIndex)f.fillRect(1,47+row*11,158,11,theme().selection);text(4,48+row*11,String(fileDirs[i]?"+ ":"  ")+fileNames[i].substring(0,23));}footer("A:Open #:Tools L/R:Page");}
   else if(screen==Screen::FileView){header("FILE PREVIEW");wrap(5,35,filePreview);footer("First 168 bytes / B:Back");}
-  else if(screen==Screen::Settings){header("SETTINGS");String items[]={String("Theme: ")+theme().name,String("Radio: ")+(radioRunning?"running":"paused"),String("Scan: ")+modeName(),String("Channel: ")+(channelLock?String(channelLock):"hop 1-11"),String("CSV log: ")+(logging?"on":"off"),"Retry modem session",String("BLE scan: ")+(bleActiveScan?"active requests":"passive listen")};menuRows(items,7);footer("A:Change  B:Back");}
-  else if(screen==Screen::Tools){header("SECURITY TOOLKIT");String items[]={"RSSI radar","WiFi access points","WiFi stations","Probe requests","BLE devices","Channel analyzer","Traffic alerts",String(storageStatus.recording?"Stop & save PCAP":"Record WiFi PCAP"),"Record EAPOL only","WiFi / BLE attacks",String("Scan: ")+modeName(),"Stop all radio tools","Dedicated scanners","Packet / BLE analyzer","Connected network tools","Saved device / SSID lists","Find My live sound sweep"};menuRows(items,17);footer("Up/Dn A:Open C:Home");}
+  else if(screen==Screen::Tones){header("RINGTONES / RTTTL");String items[]={String("Call tone: ")+((toneEnabled&1)?"on":"off"),String("Text tone: ")+((toneEnabled&2)?"on":"off"),String("Recon alert: ")+((toneEnabled&4)?"on":"off"),String("Tool saved: ")+((toneEnabled&8)?"on":"off"),String("Alert volume: ")+toneVolume+"%","Load call.rtttl from SD","Load sms.rtttl from SD","Load recon.rtttl from SD","Load tool.rtttl from SD","Reset retro tones","Stop preview"};menuRows(items,11);footer("A:Preview L/R:Toggle/vol");}
+  else if(screen==Screen::FileActions){header("SD FILE ACTIONS");String items[]={"Rename selected item","Copy selected file","Move file to trash","Create folder here","Back up original SPIFFS","Upload CSV to WiGLE","Upload CSV to WDG Wars"};menuRows(items,7);footer(fileBusy()?"D:Cancel file operation":"A:Choose B:Back");}
+  else if(screen==Screen::UploadReview){header("REVIEW EXTERNAL UPLOAD");text(5,36,uploadChoice==0?"Destination: WiGLE":"Destination: WDG Wars",theme().accent);wrap(5,50,fileNames[fileIndex],24,2);text(5,76,"Sends selected scan data",TFT_ORANGE);auto u=uploadStatus();text(5,88,String(u.message).substring(0,25));text(5,102,String(u.sent)+" / "+u.total+" bytes",theme().muted);footer("A:Send B:Back D:Cancel");}
+  else if(screen==Screen::TrashConfirm){header("MOVE TO TRASH?");wrap(5,38,fileNames[fileIndex],24,3);text(5,78,"Recoverable in SD trash",theme().muted);footer("A:Move B:Cancel");}
+  else if(screen==Screen::Playlist){header("SSID LIST EDITOR");String items[]={"Add SSID",String("Remove: ")+ssidName(playlistIndex),"Generate 10 random SSIDs","Save as beacon playlist","Load selected text file","Add observed SSIDs","Clear editor"};menuRows(items,7);footer("A:Choose L/R:SSID B:Back");}
+  else if(screen==Screen::Mission){header(mission.active?"MISSION RECORDING":"RECON MISSIONS");String items[]={"Start WiFi + BLE mission","Start WiFi mission","Start BLE mission","Stop / save mission","Browse saved missions","Export Marauder AP JSON"};menuRows(items,6);footer(mission.active?"A:Choose / stop to finalize":"A:Choose B:Back");}
+  else if(screen==Screen::MacSettings){header("RADIO MAC SETTINGS");String items[]={"Randomize AP MAC","Randomize station MAC","Restore factory AP MAC","Restore factory STA MAC","AP MAC = viewed target","STA MAC = viewed target"};menuRows(items,6);footer("Stop radios before change");}
+  else if(screen==Screen::Music){header("MUSIC PLAYER");auto m=musicStatus();String name=m.path;int slash=name.lastIndexOf('/');if(slash>=0)name=name.substring(slash+1);text(5,35,name.length()?name.substring(0,25):"SD /hackerphone/music",theme().accent);
+    text(5,49,m.paused?"PAUSED":m.busy?"PLAYING":"STOPPED");text(5,61,String(m.elapsedMs/60000)+":"+(m.elapsedMs/1000%60<10?"0":"")+String(m.elapsedMs/1000%60)+"  Vol "+m.volume+"%");
+    f.drawRect(5,75,150,5,theme().muted);if(m.size)f.fillRect(6,76,uint64_t(m.position)*148/m.size,3,theme().accent);
+    text(5,87,String(m.message).substring(0,25),m.errors?TFT_ORANGE:theme().muted);text(5,101,m.repeat?"#:Repeat on  Up:Browse":"#:Repeat off Up:Browse",theme().muted);footer(m.busy?"A:Pause D:Stop L/R:Skip":"A:Play D:Stop L/R:Skip");}
+  else if(screen==Screen::Leds){header("LEDS / NOTIFICATIONS");static const char* patterns[]={"Off","Solid","Breathe","Chase"};String items[16]={String("Pattern: ")+patterns[unsigned(ledSettings.pattern)],String("Brightness: ")+ledSettings.brightness,"Test LEDs / 5 seconds",String("Calls: ")+((ledSettings.notifications&1)?"on":"off"),String("Messages: ")+((ledSettings.notifications&2)?"on":"off"),String("Recon alerts: ")+((ledSettings.notifications&4)?"on":"off"),String("Tool completion: ")+((ledSettings.notifications&8)?"on":"off"),"Toggle all LEDs"};for(unsigned i=0;i<8;++i)items[i+8]=String("LED ")+String(i+1)+((ledSettings.mask&(1u<<i))?": enabled":": disabled");menuRows(items,16);footer("A:Change L/R:Level B:Back");}
+  else if(screen==Screen::Settings){header("SETTINGS");String items[]={String("Theme: ")+theme().name,String("Radio: ")+(radioRunning?"running":"paused"),String("Scan: ")+modeName(),String("Channel: ")+(channelLock?String(channelLock):"hop 1-11"),String("CSV log: ")+(logging?"on":"off"),"Retry modem session",String("BLE scan: ")+(bleActiveScan?"active requests":"passive listen"),"Music player","LEDs / notifications","Test audio output","Lock keypad","Ringtones / RTTTL"};menuRows(items,12);footer("A:Change  B:Back");}
+  else if(screen==Screen::Tools){header("SECURITY TOOLKIT");String items[]={"RSSI radar","WiFi access points","WiFi stations","Probe requests","BLE devices","Channel analyzer","Traffic alerts",String(storageStatus.recording?"Stop & save PCAP":"Record WiFi PCAP"),"Record EAPOL only","WiFi / BLE attacks",String("Scan: ")+modeName(),"Stop all radio tools","Dedicated scanners","Packet / BLE analyzer","Connected network tools","Saved device / SSID lists","Find My live sound sweep","Recon missions","SSID list editor","Radio MAC settings"};menuRows(items,20);footer("Up/Dn A:Open C:Home");}
   else if(screen==Screen::SavedLists){header("SD OBSERVATION LISTS");String items[]={"Save all observations","Save WiFi access points","Save BLE / trackers","Save SSIDs as playlist","Browse / load saved lists","Clear current observations"};menuRows(items,6);footer("A:Open B:Back");}
   else if(screen==Screen::Scanners){header("DEVICE / PROTOCOL SCANS");String items[unsigned(ScanProfile::Count)];for(unsigned i=0;i<unsigned(ScanProfile::Count);++i)items[i]=scanDefinitions[i].name;menuRows(items,unsigned(ScanProfile::Count));footer("A:Scan B:Back");}
   else if(screen==Screen::PacketMonitor&&handshakePage){header("EAPOL EXCHANGE MONITOR");auto& e=recon.eapol;
@@ -356,7 +431,7 @@ static void render(uint32_t now){
     text(4,92,String("EAPOL ")+recon.eapolFrames+" SAE "+recon.saeFrames,theme().muted);
     text(4,104,String(modeName())+" drop "+radioDrops,theme().accent);footer("D:EAPOL L/R:Radio B:Back");}
   else if(screen==Screen::Network){header("CONNECTED NETWORK TOOLS");String items[11+unsigned(NetworkProbe::Count)]={"SSID: "+networkSsid,"WiFi password (hidden)","Target: "+networkHost,"Join configured WiFi","Save WiFi profile","Load WiFi profile","Target the gateway","Start WiFi hotspot","Start captive portal","Status / scan results","Stop / disconnect"};for(unsigned i=0;i<unsigned(NetworkProbe::Count);++i)items[11+i]=networkProbeNames[i];menuRows(items,11+unsigned(NetworkProbe::Count));footer("A:Open B:Back C:Stop");}
-  else if(screen==Screen::NetEdit){header(networkField==0?"EDIT WIFI SSID":networkField==1?"EDIT WIFI PASSWORD":networkField==2?"EDIT TARGET IPV4":networkField==3?"EDIT TARGET BSSID":networkField==4?"EDIT CLIENT MAC":"EDIT BEACON SSID");
+  else if(screen==Screen::NetEdit){header(networkField==0?"EDIT WIFI SSID":networkField==1?"EDIT WIFI PASSWORD":networkField==2?"EDIT TARGET IPV4":networkField==3?"EDIT TARGET BSSID":networkField==4?"EDIT CLIENT MAC":networkField==5?"EDIT BEACON SSID":networkField==6?"ADD PLAYLIST SSID":networkField==7?"RENAME SELECTED FILE":"NEW SD FOLDER");
     String shown=networkEdit;if(networkField==1&&!networkShowPassword){shown="";for(unsigned i=0;i<networkEdit.length();++i)shown+='*';}wrap(4,34,shown,25,3);
     text(4,69,networkField==2?"Digits / * inserts dot":networkUpper?"Multi-tap ABC / *:case":"Multi-tap abc / *:case",theme().accent);
     text(4,83,"Up/Dn: last character",theme().muted);text(4,95,networkField==1?"#:space D:show password":"#:space / *:letter case",theme().muted);footer("A:Save B:Erase C:Cancel");}
@@ -403,7 +478,7 @@ static void render(uint32_t now){
     String hex;for(unsigned i=0;i<std::min<unsigned>(g.valueSize,16);++i){char b[4];snprintf(b,sizeof(b),"%02X ",g.value[i]);hex+=b;}wrap(5,83,hex,24,2);text(5,105,String("Notifications ")+g.notifications,theme().muted);footer("A:Read D:Sub #:Save B:Exit");
   }
   else if(screen==Screen::Attacks){header("WIFI / BLE ATTACKS");constexpr unsigned count=unsigned(AttackMode::Count);String items[count+3];for(unsigned i=0;i<count;++i)items[i]=attackDefinitions[i].name;items[count]="Target / list settings";items[count+1]="Named beacons / replay";items[count+2]="Stop transmission";menuRows(items,count+3);footer("A:Review B:Back C:Home");}
-  else if(screen==Screen::AttackConfig){header("ATTACK TARGET SETTINGS");auto& t=attackOptions.target;String items[]={"AP "+macText(t.bssid),"Client "+macText(t.client),"SSID: "+String(t.ssid),"Channel: "+String(t.channel),"CSA destination: "+String(t.destinationChannel),"Clear selected client","Add target to list",String("Use list: ")+(attackOptions.useList?"yes / ":"no / ")+attackListCount(),"Clear target list"};menuRows(items,9);footer("A:Edit B:Back");}
+  else if(screen==Screen::AttackConfig){header("ATTACK TARGET SETTINGS");auto& t=attackOptions.target;String items[]={"AP "+macText(t.bssid),"Client "+macText(t.client),"SSID: "+String(t.ssid),"Channel: "+String(t.channel),"CSA destination: "+String(t.destinationChannel),"Clear selected client","Add target to list",String("Use list: ")+(attackOptions.useList?"yes / ":"no / ")+attackListCount(),"Clear target list","Add observed AP clients","Remove last target","Add marked APs / clients"};menuRows(items,12);footer("A:Edit B:Back");}
   else if(screen==Screen::AttackConfirm){
     header("REVIEW ATTACK");const auto& def=attackDefinitions[unsigned(pendingAttack)];auto& t=attackOptions.target;
     text(5,34,String(def.name).substring(0,25),theme().accent);
@@ -432,16 +507,47 @@ static void render(uint32_t now){
   else if(screen==Screen::Incoming){header("INCOMING CALL");wrap(5,42,phone.state().caller);text(5,80,"Audio not yet validated",TFT_ORANGE);footer("A:Answer B:Reject");}
   else {header("ENGINEERING BUILD 0.4");text(5,35,String("Keys ")+(mp24::keysReady?"OK":"FAIL")+" / "+mp24::keyEvents);text(5,47,String("SD ")+(mp24::cardReady?"OK":"unavailable"));text(5,59,"Heap "+String(ESP.getFreeHeap()/1024)+"K");text(5,71,"PSRAM "+String(ESP.getFreePsram()/1024)+"K");text(5,83,"Modem "+String(phone.state().online?"OK":"starting/offline"));text(5,95,"WiFi "+String(recon.wifiFrames)+" BLE "+String(recon.bleFrames));footer("C:Home");}
   if(notice.length()&&uint32_t(now-noticeAt)<2500){f.fillRect(0,101,160,14,theme().selection);text(3,104,notice.substring(0,26),TFT_YELLOW);}
+  if(volumeAt&&uint32_t(now-volumeAt)<1500){f.fillRoundRect(20,90,120,22,4,TFT_BLACK);text(35,97,String("Volume ")+musicStatus().volume+"%",theme().accent);}
   mp24::present();
 }
 static void serialCommands(uint32_t now){
   static char line[256];static unsigned n=0;static bool overflow=false;
   while(Serial.available()){char c=Serial.read();if(c=='\r')continue;if(c!='\n'){if(!overflow&&n+1<sizeof(line))line[n++]=c;else overflow=true;continue;}line[n]=0;n=0;if(overflow){overflow=false;Serial.println("HP_ERROR Command too long");continue;}
+    if(shuttingDown){Serial.println("HP_SHUTTING_DOWN");continue;}
     if(!ready&&strcmp(line,"INFO")&&strcmp(line,"DISPLAY")){Serial.println("HP_NOT_READY Use INFO or DISPLAY");continue;}
-    if(!strcmp(line,"INFO"))Serial.printf("HP_INFO v0.4.0-dev MP24 160x128 keys=%d events=%lu i2cerr=%lu sd=%d modem=%d sim=%u heap=%u psram=%u wifi=%lu ble=%lu drops=%lu\n",mp24::keysReady,(unsigned long)mp24::keyEvents,(unsigned long)mp24::i2cErrors,mp24::cardReady,phone.state().online,unsigned(phone.state().sim),ESP.getFreeHeap(),ESP.getFreePsram(),(unsigned long)recon.wifiFrames,(unsigned long)recon.bleFrames,(unsigned long)radioDrops);
+    if(!strcmp(line,"INFO"))Serial.printf("HP_INFO v0.5.0-dev MP24 160x128 keys=%d events=%lu i2cerr=%lu sd=%d modem=%d sim=%u heap=%u psram=%u wifi=%lu ble=%lu drops=%lu\n",mp24::keysReady,(unsigned long)mp24::keyEvents,(unsigned long)mp24::i2cErrors,mp24::cardReady,phone.state().online,unsigned(phone.state().sim),ESP.getFreeHeap(),ESP.getFreePsram(),(unsigned long)recon.wifiFrames,(unsigned long)recon.bleFrames,(unsigned long)radioDrops);
     else if(!strcmp(line,"DISPLAY"))Serial.printf("HP_DISPLAY frames=%lu errors=%lu light=%d\n",(unsigned long)mp24::displayFrames,(unsigned long)mp24::displayErrors,mp24::lightReady);
     else if(!strcmp(line,"LIGHT")){mp24::backlight(true);Serial.printf("HP_LIGHT ready=%u\n",mp24::lightReady);}
     else if(!strcmp(line,"HEALTH"))Serial.printf("HP_HEALTH uptime=%lu stack_free=%u heap_ok=%d logging=%d log_bytes=%lu targets=%u\n",(unsigned long)now,unsigned(uxTaskGetStackHighWaterMark(nullptr)),heap_caps_check_integrity_all(false),logging,(unsigned long)(session?session.size():0),unsigned(recon.count(now)));
+    else if(!strncmp(line,"FILE RENAME ",12)&&logging){Serial.println("HP_FILE FAILED Stop CSV logging first");}
+    else if(!strncmp(line,"FILE TRASH ",11)&&logging){Serial.println("HP_FILE FAILED Stop CSV logging first");}
+    else if(fileCommand(line)){}
+    else if(toneCommand(line)){}
+    else if(!strncmp(line,"UPLOAD WIGLE ",13))Serial.printf("HP_UPLOAD %s\n",uploadStart(0,line+13)?"STARTED":"FAILED");
+    else if(!strncmp(line,"UPLOAD WDG ",11))Serial.printf("HP_UPLOAD %s\n",uploadStart(1,line+11)?"STARTED":"FAILED");
+    else if(!strcmp(line,"UPLOAD CANCEL")){uploadCancel();Serial.println("HP_UPLOAD CANCELLED");}
+    else if(!strcmp(line,"UPLOAD STATUS")){auto u=uploadStatus();Serial.printf("HP_UPLOAD busy=%u sent=%lu total=%lu http=%d accepted=%u message=%s\n",u.busy,(unsigned long)u.sent,(unsigned long)u.total,u.http,u.accepted,u.message);}
+
+    else if(!strcmp(line,"TONES")){screen=Screen::Tones;menu=0;}
+    else if(editorCommand(line)){}
+    else if(!strcmp(line,"MUSIC")){screen=Screen::Music;}
+    else if(!strcmp(line,"MUSIC STATUS")){auto m=musicStatus();Serial.printf("HP_MUSIC busy=%u paused=%u volume=%u rate=%lu channels=%u frames=%lu elapsed=%lu errors=%lu stack=%lu path=%s message=%s\n",m.busy,m.paused,m.volume,(unsigned long)m.rate,m.channels,(unsigned long)m.frames,(unsigned long)m.elapsedMs,(unsigned long)m.errors,(unsigned long)m.stackFree,m.path,m.message);}
+    else if(!strncmp(line,"MUSIC PLAY ",11))Serial.printf("HP_MUSIC %s\n",!phone.state().phonePriority()&&musicPlay(line+11)?"QUEUED":"FAILED");
+    else if(!strcmp(line,"MUSIC TEST"))Serial.printf("HP_MUSIC %s\n",!phone.state().phonePriority()&&musicTone()?"QUEUED":"FAILED");
+    else if(!strcmp(line,"MUSIC STOP")){musicStop();nextMusic=0;Serial.println("HP_MUSIC STOPPING");}
+    else if(!strcmp(line,"MUSIC PAUSE")){musicPause();Serial.println("HP_MUSIC TOGGLED");}
+    else if(!strncmp(line,"VOLUME ",7)){unsigned value;char extra;if(sscanf(line+7,"%u%c",&value,&extra)==1&&value<=100){musicVolume(value);volumeAt=volumeSaveAt=now;Serial.println("HP_VOLUME OK");}else Serial.println("HP_VOLUME INVALID");}
+    else if(!strcmp(line,"MISSION")){screen=Screen::Mission;menu=0;}
+    else if(!strncmp(line,"MISSION START ",14)){unsigned mode;char extra;bool ok=sscanf(line+14,"%u%c",&mode,&extra)==1&&mode<=2&&!phone.state().phonePriority();if(ok){stopTools();if(logging){session.flush();session.close();logging=false;}ok=missionStart(mode);}Serial.printf("HP_MISSION %s path=%s\n",ok?"STARTED":"FAILED",mission.path);}
+    else if(!strcmp(line,"MISSION STOP")){missionStop();Serial.println("HP_MISSION STOPPED");}
+    else if(!strcmp(line,"MISSION STATUS"))Serial.printf("HP_MISSION active=%u records=%lu observations=%lu links=%lu probes=%lu alerts=%lu bytes=%lu error=%u path=%s\n",mission.active,(unsigned long)mission.records,(unsigned long)mission.observed,(unsigned long)mission.relationships,(unsigned long)mission.probes,(unsigned long)mission.alerts,(unsigned long)mission.bytes,mission.error,mission.path);
+    else if(!strcmp(line,"PLAYLIST")){screen=Screen::Playlist;menu=0;}
+    else if(!strcmp(line,"MACS")){screen=Screen::MacSettings;menu=0;}
+    else if(!strcmp(line,"LEDS")){screen=Screen::Leds;menu=0;}
+    else if(!strcmp(line,"LEDS TEST")){ledsTest(now);Serial.printf("HP_LEDS ready=%u\n",ledSettings.ready);}
+    else if(!strcmp(line,"CONTROLS"))Serial.printf("HP_CONTROLS power=%u held=%lu locked=%u shutdown=%u leds=%u volume=%u keys=%lu\n",mp24::powerPressed(),(unsigned long)powerButton.held(now),locked,shuttingDown,ledSettings.ready,musicStatus().volume,(unsigned long)mp24::keyEvents);
+    else if(!strcmp(line,"LOCK")){locked=true;mp24::backlight(false);Serial.println("HP_LOCKED");}
+    else if(!strcmp(line,"UNLOCK")){locked=false;mp24::backlight(true);Serial.println("HP_UNLOCKED");}
     else if(!strcmp(line,"HOME")){irStop();trackerLiveStop();attackStop();labStop();networkStop();gattStop();screen=Screen::Home;menu=0;recon.selected=recon.pinned=-1;}
     else if(!strcmp(line,"BLE ACTIVE 0")||!strcmp(line,"BLE ACTIVE 1")){auto net=networkStatus();bool ok=!attackStatus.active&&lab.mode==LabMode::Off&&!trackerLive.active&&!gattStatus().busy&&!gattStatus().connected&&!net.busy&&!net.connected&&!net.hotspot;if(ok)radioSetBleActive(line[11]=='1');Serial.printf("HP_BLE_SCAN %s active=%u\n",ok?"OK":"BUSY",bleActiveScan);}
     else if(!strcmp(line,"RADIO STATUS")){uint8_t channel=0;wifi_second_chan_t secondary;esp_err_t error=esp_wifi_get_channel(&channel,&secondary);Serial.printf("HP_RADIO running=%u mode=%u logical=%u actual=%u error=%d\n",radioRunning,unsigned(radioMode),radioChannel,channel,error);}
@@ -544,10 +650,10 @@ static void serialCommands(uint32_t now){
       if(ok){const char* hex=end+1;size_t length=strlen(hex);ok=length&&length%2==0&&length<=128;for(size_t i=0;ok&&i<length;i+=2){auto digit=[](char c){return c>='0'&&c<='9'?c-'0':c>='A'&&c<='F'?c-'A'+10:c>='a'&&c<='f'?c-'a'+10:-1;};int a=digit(hex[i]),b=digit(hex[i+1]);if(a<0||b<0)ok=false;else bytes[size++]=(a<<4)|b;}}
       if(ok)ok=gattWrite(handle,bytes,size,true);Serial.printf("HP_GATT %s\n",ok?"QUEUED":"FAILED");}
     else if(!strncmp(line,"FILEINFO ",9)){
-      const char* relative=line+9;if(!safeRelativePath(relative))Serial.println("HP_FILE_ERROR path");else{File f=SD.open(String("/hackerphone/")+relative,FILE_READ);if(!f||f.isDirectory())Serial.println("HP_FILE_ERROR missing");else Serial.printf("HP_FILEINFO %lu\n",(unsigned long)f.size());f.close();}}
+      const char* relative=line+9;if(!safeSdPath((String("/hackerphone/")+relative).c_str()))Serial.println("HP_FILE_ERROR path");else{File f=SD.open(String("/hackerphone/")+relative,FILE_READ);if(!f||f.isDirectory())Serial.println("HP_FILE_ERROR missing");else Serial.printf("HP_FILEINFO %lu\n",(unsigned long)f.size());f.close();}}
     else if(!strncmp(line,"FILECHUNK ",10)){
-      char* separator=strchr(line+10,' ');if(!separator){Serial.println("HP_FILE_ERROR syntax");continue;}*separator=0;char* end;unsigned long offset=strtoul(separator+1,&end,10);
-      if(end==separator+1||*end||!safeRelativePath(line+10)){Serial.println("HP_FILE_ERROR path/offset");continue;}
+      char* separator=strrchr(line+10,' ');if(!separator){Serial.println("HP_FILE_ERROR syntax");continue;}*separator=0;char* end;unsigned long offset=strtoul(separator+1,&end,10);
+      if(end==separator+1||*end||!safeSdPath((String("/hackerphone/")+(line+10)).c_str())){Serial.println("HP_FILE_ERROR path/offset");continue;}
       File f=SD.open(String("/hackerphone/")+(line+10),FILE_READ);if(!f||f.isDirectory()||offset>f.size()||!f.seek(offset)){Serial.println("HP_FILE_ERROR read");f.close();continue;}
       uint8_t bytes[1024];int got=f.read(bytes,std::min<size_t>(sizeof(bytes),f.size()-offset));f.close();if(got<0){Serial.println("HP_FILE_ERROR IO");continue;}Serial.printf("HP_CHUNK %lu %d\n",offset,got);Serial.write(bytes,got);Serial.println("\nHP_CHUNK_END");}
     else if(!strcmp(line,"RECON"))startRecon();
@@ -574,12 +680,24 @@ void setup(){
   delay(250);Serial.println("HP_STAGE usb");
   ready=mp24::begin();
   if(!ready){Serial.println("HP_FAIL framebuffer");return;}
-  irBegin();
+  irBegin();ledsStart();tonesBegin();musicBegin(preferences.getUChar("volume",35),preferences.getBool("repeat",false));
   auto& f=mp24::frame;f.fillSprite(TFT_BLACK);f.setSwapBytes(true);f.pushImage((160-bwmWidth)/2,7,bwmWidth,bwmHeight,bwmPixels);text(44,91,"HACKERPHONE");text(19,107,"Engineering preview",theme().muted);mp24::present();
-  storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.4.0-dev");
+  storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.5.0-dev");
 }
-void loop(){if(!ready){serialCommands(millis());delay(10);return;}uint32_t now=millis();mp24::modemPoll(phone,now);serialCommands(now);now=millis();key(mp24::key(now),now);now=millis();
+void loop(){if(!ready){serialCommands(millis());delay(10);return;}uint32_t now=millis();if(!shuttingDown)mp24::modemPoll(phone,now);serialCommands(now);now=millis();key(mp24::key(now),now);now=millis();
+  auto pe=powerButton.update(mp24::powerPressed(),now);
+  if(!shuttingDown&&pe==PowerEvent::Lock){locked=!locked;mp24::backlight(!locked);}
+  if(!shuttingDown&&pe==PowerEvent::Shutdown){shuttingDown=true;shutdownAt=now;fileCancel();locked=false;stopTools();musicStop();nextMusic=0;if(logging){session.flush();session.close();logging=false;}preferences.putUChar("volume",musicStatus().volume);mp24::modemShutdown();mp24::backlight(true);}
+  if(shuttingDown){musicTick();ledsTick(now,false,true);if(uint32_t(now-shutdownAt)>3000&&!musicStatus().busy&&!networkStatus().busy){if(!cutRequested)cutRequested=mp24::powerCut();if(cutRequested&&!mp24::powerPressed()){mp24::backlight(false);esp_sleep_enable_ext0_wakeup(GPIO_NUM_2,1);Serial.flush();esp_deep_sleep_start();}}if(uint32_t(now-lastDraw)>100){lastDraw=now;render(now);}delay(5);return;}
+  if(volumeSaveAt&&uint32_t(now-volumeSaveAt)>1500){preferences.putUChar("volume",musicStatus().volume);volumeSaveAt=0;}
+  if(nextMusic&&!musicStatus().busy){int step=nextMusic;nextMusic=0;musicNext(step);}
   if(phone.state().phonePriority()){irStop();trackerLiveStop();attackStop();networkStop();if(radioRunning)radioStop();if(lab.mode!=LabMode::Off)labStop();auto gs=gattStatus();if(gs.busy||gs.connected)gattStop();if(phone.state().call==Call::Ringing)screen=Screen::Incoming;}
-  radioTick(now);trackerLiveTick(now);labTick(now);attackTick(now);irTick(now);networkTick(now);storageTick(now);saveTargets(now);sampleRates(now);
+  static uint32_t lastSms=0,lastEvents=0;static bool wasRinging=false,wasCapture=false;
+  bool ringing=phone.state().call==Call::Ringing;if(ringing&&!wasRinging)ledsNotify(0,now);wasRinging=ringing;
+  if(phone.state().inboxNotifications!=lastSms){lastSms=phone.state().inboxNotifications;ledsNotify(1,now);}
+  if(recon.eventCount!=lastEvents){lastEvents=recon.eventCount;ledsNotify(2,now);}
+  if(wasCapture&&!storageStatus.recording){ledsNotify(3,now);if(toneEnabled&8)tonePreview(3);}wasCapture=storageStatus.recording;
+  tonesTick(phone.state(),now,recon.eventCount);musicTick();ledsTick(now,locked);fileTick(now);
+  radioTick(now);trackerLiveTick(now);labTick(now);attackTick(now);irTick(now);networkTick(now);storageTick(now);saveTargets(now);sampleRates(now);missionTick(now);
   if(uint32_t(now-lastDraw)>=100){lastDraw=now;render(now);}delay(2);
 }

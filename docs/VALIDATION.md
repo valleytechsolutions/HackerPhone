@@ -10,7 +10,7 @@
 
 ## Native code checks
 
-`tools/test_core.py` passes 25 groups covering normal no-SIM operation without power cycling, call state acknowledgments versus actual active calls, incoming call events, UCS-2 SMS PDU structure, bounded UTF-8 parsing, timeout/ambiguous message handling without auto-retry, SIM removal during a send, registration/CSQ status, wraparound timing, malformed UART lines, UART write failure, CSV quoting/formula neutralization, file path validation, PCAP record headers, bounded recon-table eviction, selected and detail-page target retention, vendor database bounds and private-address handling, disconnect/BLE burst monitors, lab/attack frame construction, and bounded IR import/protocol encoding.
+`tools/test_core.py` passes 28 groups covering normal no-SIM operation without power cycling, call state acknowledgments versus actual active calls, incoming call events, UCS-2 SMS PDU structure, bounded UTF-8 parsing, timeout/ambiguous message handling without auto-retry, SIM removal during a send, registration/CSQ status, wraparound timing, malformed UART lines, UART write failure, CSV quoting/formula neutralization, file path validation, PCAP record headers, bounded recon-table eviction, selected and detail-page target retention, vendor database bounds and private-address handling, disconnect/BLE burst monitors, lab/attack frame construction, and bounded IR import/protocol encoding.
 
 The same run feeds 40,000 synthetic malformed/random radio buffers through the Wi-Fi/BLE parsers. These are robustness tests, not a field detection accuracy measurement.
 
@@ -52,7 +52,7 @@ The final 0.2 development preview was rebuilt from the separate HackerPhone fold
 
 Final locally flashed 0.3 application: **1,333,248 bytes**, SHA-256 `7789905e16505695a3cad50d9e6709a79854f34813075ff416cd35a8c963bdfb`. It was written only at `0x10000`, with recovery/identity checks and write-hash verification. A final startup fix explicitly holds the inverted IR emitter off before a capture. Its repeated IR SD/start-stop/timeout check passed, with zero I²C errors, 270 error-free display transfers, working backlight initialization and heap integrity passing. A private recovery copy of this working application is retained. The owner subsequently confirmed the Infrared menu and remote capture worked. Optical transmission, carrier measurement and appliance replay remain unverified.
 
-## 0.4 recon and network preview � 2026-10-14
+## 0.4 recon and network preview — 2026-10-14
 
 - Native tests pass **25 groups**, including 40,000 malformed/random radio buffers. New checks cover complete beacon/security-IE cloning, AP metadata, bounded SAE-token parsing, IPv4/subnet/DNS/HTTP parsing, saved-list encoding, Meta heuristics, AP address capture filters and ordered EAPOL exchanges. These tests do not establish RF attack effects.
 - AP/channel verification found that a strong adjacent-channel beacon had been assigned the receiver's tuned channel. The advertised DS channel now takes precedence. USB channel changes were separately corrected to retune the radio rather than only update its logical variable; actual/logical channel diagnostics matched afterward.
@@ -61,7 +61,7 @@ Final locally flashed 0.3 application: **1,333,248 bytes**, SHA-256 `7789905e165
 - Owned laptop GATT fixtures independently received the exact **AirTag AF**, **Find My 01 00 03**, and **DULT 00 03** writes. Each request disconnected and cleared its busy state. This validates protocol delivery to the fixture, not real tracker audibility or ownership restrictions. No broad live sound sweep or pairing-spam effect test was performed.
 - On-device TCP-open/TCP-closed/ICMP loopback tests passed. The actual AP interface came up at `192.168.4.1`. Local portal socket tests passed HTTP GET, a fragmented POST and DNS A response. The marked POST body was exported from SD and matched byte-for-byte; counters showed **1 form, 1 saved, 0 lost**. The initial self-test's AP-address connection was replaced with bounded loopback connections. These are local service tests, not a wireless client's portal/join validation.
 - A selected-AP PCAP exported **72 records / 29,554 bytes**, with zero capture drops/errors. An independent parser checked that every frame contained that selected AP address. Passive/active BLE scan switching also completed.
-- Final portal/capture check: **84,264 bytes internal heap**, **1,829,240 bytes PSRAM**, **2,696 bytes loop-task stack headroom**, passing heap integrity, zero I�C errors, **303 display transfers with zero errors**, working SD/backlight and modem online/No-SIM. This is a short engineering check, not long-duration stability certification.
+- Final portal/capture check: **84,264 bytes internal heap**, **1,829,240 bytes PSRAM**, **2,696 bytes loop-task stack headroom**, passing heap integrity, zero I²C errors, **303 display transfers with zero errors**, working SD/backlight and modem online/No-SIM. This is a short engineering check, not long-duration stability certification.
 - Framebuffers of scanners, lists, network tools, attacks and settings were visually reviewed. The owner confirmed that **Dedicated scanners, Saved device / SSID lists and Connected network tools scroll/open normally using the joystick and A/B/C**.
 
 Locally flashed application: **1,468,000 bytes**, SHA-256 `b11612833ce314476328d7495a7650a9456beaf9889131c344a909bd4e47589a`. The flash operation verified device/recovery identity and wrote only the application at `0x10000`; its write hash matched. A private recovery copy of this artifact is retained. Captures, target identifiers, test logs and recovery binaries remain excluded from Git.
@@ -77,3 +77,65 @@ Locally flashed application: **1,468,000 bytes**, SHA-256 `b11612833ce314476328d
 7. Each Marauder feature in the inventory is ported or has a specific hardware limitation recorded.
 8. Daily power use and complete recovery/distribution checks pass before publishing a web flasher or a daily-use release. The source repository is available for development with its current limitations documented.
 9. Optical IR replay, carrier/polarity verification, range and imported-remote appliance behavior; reception was owner-confirmed.
+
+
+## 0.5 audio, controls and SD workflows — 2026-10-14
+
+- The owner confirmed headphone test audio, physical side volume controls, all
+  eight LEDs, and the text/call/other tone previews. The default retro RTTTL
+  sequences were retained after this feedback. Vibration was reported only while
+  sound played; no independent vibration-motor control has been identified.
+- Native checks pass 28 groups, adding power-button debounce/hold/wraparound,
+  LED levels/masks, strict RTTTL parsing and malformed notes, MP3 ID3 bounds,
+  SD paths and streaming CRC32. The existing 40,000 malformed/random radio
+  parser checks continue to pass.
+- A new original eight-second, 44.1 kHz stereo MP3 fixture was uploaded with
+  CRC32 and exported in full with matching SHA-256. During combined radio
+  scanning it decoded 308 frames / 8,045 ms with zero decoder/I2S errors.
+  Pause, a text-tone interruption, resume and pocket lock preserved playback
+  position; MP3 worker stack headroom was 13,772 bytes. This is a short fixture
+  test, not broad codec/file-corruption or long-playback qualification.
+- Synthetic Marauder AP JSON and its client relationship round-tripped through
+  SD and USB. Invalid channel data was rejected before replacing the list.
+  Marked target snapshots, SSID add/generate/save/reload, copy, rename,
+  recoverable trash and traversal rejection were exercised without RF attacks.
+- A combined recon mission produced valid JSONL and a finalized manifest with
+  matching record count. The earlier fixture logged 78 records / 19,129 bytes.
+  These private logs are excluded from Git. This checks persistence and format,
+  not detection accuracy or persistent identity across randomized addresses.
+- Read-only SPIFFS backup wrote 1,048,576 bytes with CRC32 `97ebd092`; complete
+  USB export matched the corresponding original private recovery-image region
+  byte for byte. No restore, partition change or filesystem format occurred.
+- Non-WiGLE input was rejected before external upload. No WiGLE/WDG API
+  credential or authenticated remote upload was exercised; server acceptance
+  remains unvalidated.
+- The initial QA run finished with zero I2C errors, zero display-transfer errors,
+  zero radio-queue drops and a passing heap-integrity check. Its low loop-stack
+  headroom (1,624 bytes) prompted an increase from 8 KiB to 16 KiB before the
+  final build. MP3 scratch/stack remain in PSRAM.
+
+Physical red-button battery shutdown, long-term battery/thermal behavior,
+headphone music quality across real albums, and every individual device-family
+or attack peer effect remain separate acceptance checks. No SIM call, cellular
+voice bridge, inbound SMS delivery, or audible real-tracker result is claimed.
+
+Final device checks additionally verified both AP and station MAC randomization,
+driver readback, and restoration of both factory addresses. The initial NULL-mode
+attempt was rejected with `ESP_ERR_WIFI_MODE`; selecting the interface mode while
+the driver is stopped resolved it, followed by a return to idle and driver restart.
+TCP open/closed tests passed through the new batch-connect path as well as the
+single-connect and ICMP loopback paths. An active music file and its parent
+directory could not be copied/renamed by the file manager. Four ten-second combined
+radio samples held internal heap at 54,708 bytes and PSRAM at 1,820,216 bytes,
+with 10,684 bytes of loop-stack headroom, zero queue/I2C/display errors and passing
+heap integrity. By the last sample, 378 Wi-Fi frames and 1,895 BLE advertisements
+had been observed. This remains a short engineering soak, not a field release test.
+
+The owner then confirmed MP3 playback and the physical red-button short-tap
+lock/unlock and held shutdown/restart sequence on the connected sample. A
+battery-only electrical power-cut measurement remains unperformed. The final
+0.5 engineering image is **1,757,776 bytes**, SHA-256
+`7acee249cf21624418d92a8122a4dc6ae87e954ea23d7a2e4514c1aeaf51c4db`.
+It was flashed only at `0x10000`, verified by the flashing tool, and retained in
+the private recovery directory. Final UI captures were inspected for layout;
+the RTTTL, LED and mission screenshots are included in the repository.

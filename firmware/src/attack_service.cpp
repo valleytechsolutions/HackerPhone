@@ -33,6 +33,14 @@ bool attackListAdd(){
   unsigned i=0;for(;i<targetCount;++i)if(!memcmp(targets[i].target.bssid,t.bssid,6)&&targets[i].target.hasClient==t.hasClient&&(!t.hasClient||!memcmp(targets[i].target.client,t.client,6)))break;
   if(i==16)return false;if(i==targetCount)++targetCount;targets[i].target=t;targets[i].beaconLength=radioBeacon(t.bssid,targets[i].beacon,1024);return true;
 }
+bool attackListRemove(unsigned i){if(attackStatus.active||i>=targetCount)return false;for(unsigned j=i+1;j<targetCount;++j)targets[j-1]=targets[j];--targetCount;if(!targetCount)attackOptions.useList=false;return true;}
+unsigned attackListObservedClients(){
+  if(attackStatus.active||!attackOptions.target.hasAp)return 0;auto ap=attackOptions.target;unsigned added=0;uint32_t now=millis();
+  for(auto& t:recon.targets)if(t.fresh(now)&&!t.ble&&t.station&&!memcmp(t.bssid,ap.bssid,6)&&unicastAddress(t.mac)){
+    attackOptions.target=ap;attackOptions.target.hasClient=true;memcpy(attackOptions.target.client,t.mac,6);unsigned before=targetCount;
+    if(attackListAdd()&&targetCount>before)++added;
+  }attackOptions.target=ap;return added;
+}
 static bool cloneMode(AttackMode m){return m==AttackMode::CloneBeacon||m==AttackMode::ChannelSwitch||m==AttackMode::Quiet||m==AttackMode::ApSpam;}
 static void selectRunningTarget(unsigned i){
   if(runningList){if(attackStatus.mode==AttackMode::SaeCommit){memcpy(targets[currentTarget].token,saeToken,saeTokenSize);targets[currentTarget].tokenLength=saeTokenSize;}

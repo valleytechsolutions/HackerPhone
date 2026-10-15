@@ -21,4 +21,6 @@ bool networkRow(unsigned index,char* output,size_t capacity);
 bool networkSaveResults();
 bool networkSelfTest();
 bool networkPortalTest();
+bool networkClaimExternal();
+void networkReleaseExternal(const char* message);
 }

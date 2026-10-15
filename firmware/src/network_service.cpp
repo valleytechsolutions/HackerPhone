@@ -6,6 +6,7 @@
 #include "lab_tools.h"
 #include "ble_explorer.h"
 #include "tracker_service.h"
+#include "upload_service.h"
 #include <esp_wifi.h>
 #include <esp_event.h>
 #include <esp_netif.h>
@@ -52,6 +53,21 @@ static int connectSocket(uint32_t host,uint16_t port){
   if(!ok){close(fd);return -1;}fcntl(fd,F_SETFL,0);return fd;
 }
 static bool connectPort(uint32_t host,uint16_t port){int fd=connectSocket(host,port);if(fd<0)return false;close(fd);return true;}
+// Eight bounded, concurrent connects share one deadline. A silent host no longer
+// costs one complete timeout for each of its 65,535 ports. All FDs close on cancel.
+static void connectBatch(uint32_t host,const uint16_t* ports,unsigned count){
+  if(!ports||!count||count>8)return;
+  int sockets[8];bool pending[8]{};uint32_t started=millis();char ip[16];formatIpv4(host,ip);
+  auto found=[&](unsigned i){char s[64];snprintf(s,sizeof(s),"%s TCP %u open",ip,ports[i]);row(s);};
+  for(unsigned i=0;i<count;++i){sockets[i]=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(sockets[i]<0)continue;
+    fcntl(sockets[i],F_SETFL,O_NONBLOCK);sockaddr_in dest{};dest.sin_family=AF_INET;dest.sin_port=htons(ports[i]);dest.sin_addr.s_addr=htonl(host);
+    int result=connect(sockets[i],reinterpret_cast<sockaddr*>(&dest),sizeof(dest));if(result==0)found(i);else pending[i]=errno==EINPROGRESS;}
+  while(!cancel.load()&&uint32_t(millis()-started)<180){fd_set set;FD_ZERO(&set);int maximum=-1;
+    for(unsigned i=0;i<count;++i)if(pending[i]){FD_SET(sockets[i],&set);maximum=std::max(maximum,sockets[i]);}if(maximum<0)break;
+    timeval wait{0,10000};int ready=select(maximum+1,nullptr,&set,nullptr,&wait);if(ready<0)break;
+    for(unsigned i=0;i<count;++i)if(pending[i]&&FD_ISSET(sockets[i],&set)){int err=-1;socklen_t length=sizeof(err);if(getsockopt(sockets[i],SOL_SOCKET,SO_ERROR,&err,&length)==0&&err==0)found(i);pending[i]=false;}}
+  for(unsigned i=0;i<count;++i){if(sockets[i]>=0)close(sockets[i]);tested();}
+}
 struct PingContext {SemaphoreHandle_t finished;bool replied=false;uint32_t time=0;};
 static bool pingHost(uint32_t host,unsigned count){
   PingContext ctx{xSemaphoreCreateBinary()};if(!ctx.finished)return false;
@@ -105,9 +121,16 @@ static void worker(void*){
   Job job;for(;;){if(xQueueReceive(jobs,&job,portMAX_DELAY)!=pdTRUE)continue;
     if(job.selftest){
       int fd=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);sockaddr_in local{};local.sin_family=AF_INET;local.sin_addr.s_addr=htonl(0x7f000001);socklen_t size=sizeof(local);bool setup=fd>=0&&bind(fd,reinterpret_cast<sockaddr*>(&local),size)==0&&listen(fd,1)==0&&getsockname(fd,reinterpret_cast<sockaddr*>(&local),&size)==0;
-      bool tcp=setup&&connectPort(0x7f000001,ntohs(local.sin_port));if(fd>=0)close(fd);bool closed=setup&&!connectPort(0x7f000001,ntohs(local.sin_port));
-      row(tcp?"PASS TCP loopback open":"FAIL TCP loopback open");row(closed?"PASS TCP closed port":"FAIL TCP closed port");bool ping=pingHost(0x7f000001,1);
-      message(tcp&&closed&&ping?"PASS loopback TCP / ICMP":"FAIL loopback self-test");
+      bool tcp=setup&&connectPort(0x7f000001,ntohs(local.sin_port));
+      if(fd>=0)fcntl(fd,F_SETFL,O_NONBLOCK);
+      int accepted=tcp?accept(fd,nullptr,nullptr):-1;if(accepted>=0)close(accepted);
+      // Exercise the same batch used by full-port scans against open/closed ports.
+      uint16_t ports[]={ntohs(local.sin_port)};auto before=networkStatus();if(setup)connectBatch(0x7f000001,ports,1);auto after=networkStatus();
+      bool batch=setup&&after.found==before.found+1&&after.tested==before.tested+1;
+      if(fd>=0)close(fd);bool closed=setup&&!connectPort(0x7f000001,ports[0]);before=networkStatus();if(setup)connectBatch(0x7f000001,ports,1);after=networkStatus();
+      batch=batch&&after.found==before.found&&after.tested==before.tested+1;
+      row(tcp?"PASS TCP loopback open":"FAIL TCP loopback open");row(closed?"PASS TCP closed port":"FAIL TCP closed port");row(batch?"PASS TCP batch open / closed":"FAIL TCP batch");bool ping=pingHost(0x7f000001,1);
+      message(tcp&&closed&&batch&&ping?"PASS loopback TCP / batch / ICMP":"FAIL loopback self-test");
     }else if(job.portal)servePortal();else{
       auto current=networkStatus();uint32_t first=job.host,last=job.host;
       if(job.mode==NetworkProbe::Arp||job.mode==NetworkProbe::PingSweep||job.mode>=NetworkProbe::Telnet){if(!subnetRange(current.address,current.mask,first,last)){message("Subnet must be /24 to /30");cancel=true;}}
@@ -120,9 +143,7 @@ static void worker(void*){
         const uint16_t common[]={21,22,23,25,53,80,110,135,139,143,443,445,465,587,993,995,1883,3306,3389,5432,5900,8000,8080,8443};
         const uint16_t service[]={23,22,53,80,443,25,3389};
         unsigned count=job.mode==NetworkProbe::AllPorts?65535:job.mode==NetworkProbe::CommonPorts?sizeof(common)/sizeof(*common):1;
-        char ip[16];formatIpv4(job.host,ip);
-        for(unsigned i=0;i<count&&!cancel.load();++i){uint16_t port=job.mode==NetworkProbe::AllPorts?i+1:job.mode==NetworkProbe::CommonPorts?common[i]:service[unsigned(job.mode)-unsigned(NetworkProbe::Telnet)];
-          if(connectPort(job.host,port)){char text[64];snprintf(text,sizeof(text),"%s TCP %u open",ip,port);row(text);}tested();vTaskDelay(1);}
+        for(unsigned i=0;i<count&&!cancel.load();i+=8){uint16_t ports[8];unsigned n=std::min(8u,count-i);for(unsigned j=0;j<n;++j)ports[j]=job.mode==NetworkProbe::AllPorts?i+j+1:job.mode==NetworkProbe::CommonPorts?common[i+j]:service[unsigned(job.mode)-unsigned(NetworkProbe::Telnet)];connectBatch(job.host,ports,n);vTaskDelay(1);}
       }
       message(cancel.load()?"Scan cancelled":"Scan complete (open != identity)");
     }
@@ -141,7 +162,9 @@ static bool prepare(){
 NetworkStatus networkStatus(){if(!mutex)return status;xSemaphoreTake(mutex,portMAX_DELAY);auto result=status;xSemaphoreGive(mutex);
   auto iface=result.hotspot?accessPoint:station;if(iface){result.interfaceUp=esp_netif_is_netif_up(iface);if(result.hotspot){esp_netif_ip_info_t ip{};if(esp_netif_get_ip_info(iface,&ip)==ESP_OK)result.address=ntohl(ip.ip.addr);}}return result;}
 bool networkRow(unsigned index,char* out,size_t cap){if(!mutex||!out||!cap)return false;xSemaphoreTake(mutex,portMAX_DELAY);bool ok=index<status.rows;if(ok)snprintf(out,cap,"%s",rows[index]);xSemaphoreGive(mutex);return ok;}
-void networkCancelProbe(){cancel=true;portalRunning=false;}
+void networkCancelProbe(){cancel=true;portalRunning=false;uploadCancel();}
+bool networkClaimExternal(){if(!mutex)return false;xSemaphoreTake(mutex,portMAX_DELAY);bool ok=status.connected&&!status.busy;if(ok)status.busy=true;xSemaphoreGive(mutex);return ok;}
+void networkReleaseExternal(const char* text){if(!mutex)return;xSemaphoreTake(mutex,portMAX_DELAY);status.busy=false;snprintf(status.message,sizeof(status.message),"%s",text);xSemaphoreGive(mutex);}
 void networkStop(){networkCancelProbe();if(!mutex)return;auto s=networkStatus();if(s.connected||s.connecting)esp_wifi_disconnect();if(s.connected||s.connecting||s.hotspot)esp_wifi_set_mode(WIFI_MODE_NULL);xSemaphoreTake(mutex,portMAX_DELAY);status.connecting=status.connected=status.hotspot=status.portal=false;status.address=status.mask=status.gateway=0;xSemaphoreGive(mutex);}
 bool networkJoin(const char* ssid,const char* password){
   if(attackStatus.active||lab.mode!=LabMode::Off||gattStatus().busy||gattStatus().connected||trackerLive.active)return false;

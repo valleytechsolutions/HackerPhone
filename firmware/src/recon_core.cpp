@@ -16,7 +16,7 @@ int ReconCore::observe(const uint8_t* mac,bool ble,uint8_t type,const char* name
   for(size_t i=0;i<Capacity;++i){auto& t=targets[i];
     if(t.used&&t.ble==ble&&t.addressType==type&&!memcmp(t.mac,mac,6)){index=int(i);break;}
     if(!t.used&&free<0)free=int(i);
-    if(int(i)!=selected&&int(i)!=pinned&&(oldest<0||uint32_t(now-t.last)>age)){oldest=int(i);age=uint32_t(now-t.last);}
+    if(int(i)!=selected&&int(i)!=pinned&&!t.marked&&(oldest<0||uint32_t(now-t.last)>age)){oldest=int(i);age=uint32_t(now-t.last);}
   }
   if(index<0){index=free>=0?free:oldest;if(index<0)return -1;
     auto& t=targets[index];if(t.used)++evictions;t={};t.used=true;t.ble=ble;t.addressType=type;t.first=now;

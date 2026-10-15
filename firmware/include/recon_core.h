@@ -7,7 +7,7 @@
 
 namespace hackerphone {
 struct Target {
-  bool used=false, ble=false;
+  bool used=false, ble=false,marked=false;
   uint8_t mac[6]{},addressType=0,channel=0;
   char name[64]{};
   dragon::Match match{dragon::Family::Wifi,dragon::Confidence::None,"No signature"};

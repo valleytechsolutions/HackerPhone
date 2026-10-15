@@ -1,3 +1,5 @@
+#include "rtttl.h"
+#include "device_controls.h"
 #include "phone_core.h"
 #include "recon_core.h"
 #include "capture_format.h"
@@ -112,6 +114,10 @@ int main(){
     r.selected=-1;r.pinned=i;
     for(unsigned n=101;n<200;++n){mac[5]=uint8_t(n);r.ble(ad,sizeof(ad),mac,0,-65,n*100);}
     assert(r.targets[i].mac[5]==5); // The open detail page also protects identity.
+    r.pinned=-1;for(auto& target:r.targets)target.marked=true;
+    mac[5]=250;assert(r.ble(ad,sizeof(ad),mac,0,-40,30000)==-1);
+    r.targets[3].marked=false;assert(r.ble(ad,sizeof(ad),mac,0,-40,30001)==3);
+    assert(r.targets[i].mac[5]==5); // A full marked list rejects new identities.
     assert(r.count(50000)==0);++groups;
   }
   {
@@ -281,6 +287,23 @@ int main(){
     assert(wifiFrameHasAddress(frame,24,mac));for(size_t n=0;n<24;++n)assert(!wifiFrameHasAddress(frame,n,mac));frame[16]^=1;assert(!wifiFrameHasAddress(frame,24,mac));
     frame[0]=0xd4;memcpy(frame+4,mac,6);assert(wifiFrameHasAddress(frame,10,mac));assert(!wifiFrameHasAddress(frame,9,mac));
     memset(frame,0,sizeof(frame));frame[0]=8;frame[1]=3;memcpy(frame+24,mac,6);assert(wifiFrameHasAddress(frame,30,mac));assert(!wifiFrameHasAddress(frame,29,mac));++groups;
+  }
+  {
+    PowerButton b;assert(b.update(false,0)==PowerEvent::None);assert(b.update(true,10)==PowerEvent::None);assert(b.update(false,30)==PowerEvent::None);assert(b.update(false,100)==PowerEvent::None);
+    b.update(true,200);b.update(true,240);assert(b.update(false,300)==PowerEvent::None);assert(b.update(false,340)==PowerEvent::Lock);assert(b.update(false,400)==PowerEvent::None);
+    b.update(true,500);b.update(true,540);assert(b.update(true,3039)==PowerEvent::None);assert(b.update(true,3040)==PowerEvent::Shutdown);assert(b.update(true,5000)==PowerEvent::None);b.update(false,5100);assert(b.update(false,5140)==PowerEvent::None);
+    PowerButton rollover;rollover.update(false,0xffffe000);rollover.update(false,0xfffff000);rollover.update(true,0xfffff800);rollover.update(true,0xfffff828);assert(rollover.update(true,uint32_t(0xfffff828u+2500u))==PowerEvent::Shutdown);
+    for(unsigned i=0;i<8;++i){assert(ledLevel(LedPattern::Off,i,255,0,255)==0);assert(ledLevel(LedPattern::Solid,i,77,0,255)==77);assert(ledLevel(LedPattern::Solid,i,77,0,0)==0);assert(ledLevel(LedPattern::Chase,i,77,i*150,255)==77);}assert(ledLevel(LedPattern::Breathe,0,100,1200,255)==100);++groups;
+  }
+  {
+    assert(safeSdPath("/hackerphone/music/My song.mp3"));for(auto path:{"/hackerphone/../x","/a//b","/a/./b","/a\\b","/a ","/"})assert(!safeSdPath(path));assert(fileCrc32(0,reinterpret_cast<const uint8_t*>("123456789"),9)==0xcbf43926);
+    PowerButton bootHeld;bootHeld.update(true,0);bootHeld.update(true,40);assert(bootHeld.update(true,5000)==PowerEvent::None);bootHeld.update(false,5100);assert(bootHeld.update(false,5140)==PowerEvent::None);
+    uint32_t offset=99;uint8_t h[10]={'I','D','3',4,0,0,0,0,1,0};assert(id3Skip(h,10,1000,offset)&&offset==138);h[5]=16;assert(id3Skip(h,10,1000,offset)&&offset==148);assert(!id3Skip(h,10,147,offset));h[6]=128;assert(!id3Skip(h,10,1000,offset));for(unsigned n=3;n<10;++n)assert(!id3Skip(h,n,1000,offset));h[0]=0;assert(id3Skip(h,10,1000,offset)&&offset==0);++groups;
+  }
+  {
+    RtttlTone t;assert(parseRtttl("Test:d=8,o=4,b=120:a,p,4c#5.,g.5",t));assert(t.count==4&&t.notes[0].frequency==440&&t.notes[0].milliseconds==250&&t.notes[1].frequency==0&&t.notes[2].milliseconds==750&&t.notes[3].milliseconds==375);
+    assert(parseRtttl("Communicator:d=16,o=8,b=100:c#,p,c#,p,b7,c#,p,e,p,c#,p,p",t)&&t.count==12&&t.notes[0].frequency==4435);
+    for(auto bad:{"",":d=4:c","Test:d=3:c","Test:o=9:c","Test:b=0:c","Test:d=4,d=4:c","Test:d=4:c,","Test:d=4:x","Test:d=4:p#","Test:d=4:999999999999c","Test:d=4:c..","Test:d=4:c2","Test:d=4:c5x","Test:d=4,"})assert(!parseRtttl(bad,t));++groups;
   }
   printf("PASS %u test groups: phone, SMS, recon, storage, vendor DB, traffic, attack bounds, AP details, SAE, network parsing and IR; 40,000 malformed/random radio frames\n",groups);
 }

@@ -14,6 +14,7 @@ uint32_t keyEvents=0,i2cErrors=0;
 static HardwareSerial modem(1);
 static uint16_t lastBanks[2]={0xffff,0xffff};
 static uint32_t rawKeys=0,stableKeys=0,changedAt=0,lastPoll=0,pendingKeys=0;
+static uint32_t volumeRepeatAt=0;static uint8_t volumeHeld=255;
 static bool rd(uint8_t addr,uint8_t reg,uint8_t* out,size_t n){
   Wire.beginTransmission(addr);Wire.write(reg);
   if(Wire.endTransmission(false)!=0||Wire.requestFrom(addr,uint8_t(n))!=n){++i2cErrors;return false;}
@@ -28,9 +29,20 @@ void backlight(bool on){
   }
   lightReady=mask(0x5b,3,on?0:1,on?1:0);
 }
+// AW9523 channels recovered from the sample's eight-entry hardware table.
+// P0_2..6 and P1_5..7 only; do not change backlight, amp or module pins.
+bool ledWrite(unsigned index,uint8_t value){static constexpr uint8_t registers[]={0x26,0x27,0x28,0x29,0x2a,0x2d,0x2e,0x2f};return index<8&&wr(0x5b,registers[index],value);}
+bool ledsBegin(){for(unsigned i=0;i<8;++i)if(!ledWrite(i,0))return false;return mask(0x5b,0x12,0,0x7c)&&mask(0x5b,0x13,0,0xe0);}
+bool audioEnable(bool on){return mask(0x21,3,on?2:0,on?0:2)&&mask(0x21,7,0,2);}
+bool powerPressed(){return digitalRead(2)==HIGH;}
+bool powerCut(){return mask(0x21,3,0,1)&&mask(0x21,7,0,1);}
+void modemShutdown(){modem.print("AT+QPOWD=1\r");}
 bool begin(){
   Serial.println("HP_STAGE i2c");
   Wire.begin(47,48,100000);Wire.setTimeOut(20);
+  pinMode(2,INPUT);
+  // The battery latch must float during normal use; drive low only at shutdown.
+  mask(0x21,7,1,0);
   // A warm-reset probe occasionally NACKs while the expander is settling.
   // Retry only this verified device, with a bounded startup delay.
   for(unsigned attempt=0;attempt<3&&!lightReady;++attempt){backlight(true);if(!lightReady)delay(20);}
@@ -45,7 +57,7 @@ bool begin(){
   if(!frame.createSprite(Width,Height))return false;
   Serial.println("HP_STAGE sd");
   cardBus.begin(36,37,35,34);pinMode(34,OUTPUT);digitalWrite(34,HIGH);
-  cardReady=SD.begin(34,cardBus,4000000,"/sdcard",5,false);
+  cardReady=SD.begin(34,cardBus,4000000,"/sdcard",10,false);
   return true;
 }
 Key key(uint32_t now){
@@ -59,6 +71,9 @@ Key key(uint32_t now){
       if(uint32_t(now-changedAt)>=25&&rawKeys!=stableKeys){pendingKeys|=rawKeys&~stableKeys;stableKeys=rawKeys;}
     }
   }
+  uint8_t vol=(stableKeys&(1u<<21))?21:(stableKeys&(1u<<22))?22:255;
+  if(vol!=volumeHeld){volumeHeld=vol;volumeRepeatAt=now+500;}
+  else if(vol!=255&&int32_t(now-volumeRepeatAt)>=0){pendingKeys|=1u<<vol;volumeRepeatAt=now+120;}
   for(unsigned i=0;i<23;++i)if(pendingKeys&(1u<<i)){pendingKeys&=~(1u<<i);++keyEvents;return Key(i);}
   return None;
 }

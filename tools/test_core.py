@@ -9,6 +9,6 @@ inc=[f'-I{root / d}' for d in ('firmware/include','third_party/dragon','third_pa
 obj=out/'opendroneid.o'
 subprocess.run(cc+['-std=c11','-O1','-DODID_DISABLE_PRINTF']+inc+['-c',str(root/'third_party/opendroneid/src/opendroneid.c'),'-o',str(obj)],check=True)
 exe=out/('core_test.exe' if sys.platform=='win32' else 'core_test')
-sources=[str(root/'firmware/src'/s) for s in ('phone_core.cpp','recon_core.cpp','scan_profiles.cpp','eapol_tracker.cpp','network_format.cpp','list_format.cpp','capture_format.cpp','vendor_db.cpp','lab_format.cpp','attack_frames.cpp','ir_format.cpp')]
+sources=[str(root/'firmware/src'/s) for s in ('rtttl.cpp','device_controls.cpp','phone_core.cpp','recon_core.cpp','scan_profiles.cpp','eapol_tracker.cpp','network_format.cpp','list_format.cpp','capture_format.cpp','vendor_db.cpp','lab_format.cpp','attack_frames.cpp','ir_format.cpp')]
 subprocess.run(cxx+['-std=c++17','-O1','-Wall','-Wextra','-UNDEBUG']+inc+sources+[str(root/'tests/core_test.cpp'),str(obj),'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)

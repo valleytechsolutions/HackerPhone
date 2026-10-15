@@ -22,6 +22,8 @@ bool attackListAdd();
 void attackListClear();
 unsigned attackListCount();
 bool attackListGet(unsigned index,AttackTarget& target);
+bool attackListRemove(unsigned index);
+unsigned attackListObservedClients();
 // Local capability marker only; this does not establish off-air delivery.
 bool rawFrameAdapterLinked();
 }
