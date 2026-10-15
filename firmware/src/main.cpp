@@ -511,7 +511,8 @@ static void render(uint32_t now){
   mp24::present();
 }
 static void serialCommands(uint32_t now){
-  static char line[256];static unsigned n=0;static bool overflow=false;
+  // Fits the 1024-byte RTTTL payload plus its command, or two full SD paths.
+  static char line[1152];static unsigned n=0;static bool overflow=false;
   while(Serial.available()){char c=Serial.read();if(c=='\r')continue;if(c!='\n'){if(!overflow&&n+1<sizeof(line))line[n++]=c;else overflow=true;continue;}line[n]=0;n=0;if(overflow){overflow=false;Serial.println("HP_ERROR Command too long");continue;}
     if(shuttingDown){Serial.println("HP_SHUTTING_DOWN");continue;}
     if(!ready&&strcmp(line,"INFO")&&strcmp(line,"DISPLAY")){Serial.println("HP_NOT_READY Use INFO or DISPLAY");continue;}
@@ -676,7 +677,7 @@ static void serialCommands(uint32_t now){
 }
 void setup(){
   preferences.begin("hackerphone",false);themeIndex=preferences.getUChar("theme",0)%ThemeCount;bleActiveScan=preferences.getBool("bleactive",false);
-  Serial.begin(115200);Serial.setTxTimeoutMs(20);Serial.setDebugOutput(true);
+  Serial.setRxBufferSize(2048);Serial.begin(115200);Serial.setTxTimeoutMs(20);Serial.setDebugOutput(true);
   delay(250);Serial.println("HP_STAGE usb");
   ready=mp24::begin();
   if(!ready){Serial.println("HP_FAIL framebuffer");return;}

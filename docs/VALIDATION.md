@@ -134,8 +134,18 @@ had been observed. This remains a short engineering soak, not a field release te
 The owner then confirmed MP3 playback and the physical red-button short-tap
 lock/unlock and held shutdown/restart sequence on the connected sample. A
 battery-only electrical power-cut measurement remains unperformed. The final
-0.5 engineering image is **1,757,776 bytes**, SHA-256
-`7acee249cf21624418d92a8122a4dc6ae87e954ea23d7a2e4514c1aeaf51c4db`.
+0.5 engineering image is **1,757,792 bytes**, SHA-256
+`9072e588c18039d143432ff62339b1839ddcbf0b1be06d24551ccc74e6d1b4f6`.
 It was flashed only at `0x10000`, verified by the flashing tool, and retained in
 the private recovery directory. Final UI captures were inspected for layout;
 the RTTTL, LED and mission screenshots are included in the repository.
+
+
+The final USB check found both the application line buffer and the framework RX
+queue still limited long console commands. They now hold 1,152 and 2,048 bytes,
+respectively. A 100-note RTTTL command exceeding the former 256-byte limit saved
+and read back correctly; the original four tones were restored and compared.
+An oversized 1,200-character line was rejected, and the next command succeeded.
+A copy command with two long SD paths also completed and exported byte-exactly.
+Heap integrity and display diagnostics passed afterward. No default melody or
+volume was changed by this fix.
