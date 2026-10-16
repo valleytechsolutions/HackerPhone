@@ -38,7 +38,7 @@ and [toolkit workflows](docs/TOOLKIT.md).
 - Native phone-service tests use synthetic UART transcripts. No real calls or SMS are transmitted by tests.
 - BWM boot image and VTS home wallpaper use the owner's unchanged PNG originals.
 - Physical keypad navigation, multi-tap text composition, passive Wi-Fi/BLE recon, RSSI hunt, CSV session logging, and SD file previews are in the engineering application.
-- Four saved themes: VTS Red, Dragon, Green Radar, and Black & Gold. The home title is **HACKERPHONE**. Device-family colors stay consistent across themes.
+- Six saved themes: VTS Red, Dragon, Green Radar, Black & Gold, Biscuit Shop and Marauder. Each selects its home artwork: VTS, BWM, Biscuit Shop or JCMK. The home title is **HACKERPHONE**. Device-family colors stay consistent across themes.
 - Security menu: radar, Wi-Fi access points, transmitting stations, probe requests, BLE devices, dwell-normalized channel observations, and disconnect/BLE-spam/SSID-conflict events. Wi-Fi-only, BLE-only, combined listening and channel lock are selectable.
 - Buffered raw Wi-Fi or EAPOL-only PCAP recording to SD, with short-write/error handling and a read-only USB file exporter. See [toolkit controls](docs/TOOLKIT.md) for limits and timestamp meaning.
 - Independently implemented BLE GATT discovery, reads, writes, subscriptions, notifications and tree export. Device connection requires selecting a live BLE target; characteristic writes use the USB console. Blocking BLE requests run in a separate worker so the keypad and modem continue to be serviced.
@@ -62,6 +62,9 @@ Wi-Fi network. A laptop completed DHCP, cellular DNS and HTTP traffic through it
 See [cellular setup and controls](docs/CELLULAR.md). The 64 GB SD card mounts and
 passes a write/read check; directory loading is incremental and text previews page
 through files. Imported RTTTL supports up to 1,024 notes and ten minutes.
+The header also shows an estimated battery percentage and icon, or USB/charging
+status when plugged in. The percentage is based on voltage, not measured runtime;
+see [battery indicator details](docs/DAILY-USE.md#battery-indicator).
 
 ## Build and test
 

@@ -4,6 +4,10 @@
 #include <SPI.h>
 #include <esp_heap_caps.h>
 #include <driver/gpio.h>
+#include <esp_adc/adc_oneshot.h>
+#include <esp_adc/adc_cali.h>
+#include <esp_adc/adc_cali_scheme.h>
+#include <HWCDC.h>
 #include "cellular_service.h"
 
 namespace mp24 {
@@ -16,6 +20,13 @@ static HardwareSerial modem(1);
 static uint16_t lastBanks[2]={0xffff,0xffff};
 static uint32_t rawKeys=0,stableKeys=0,changedAt=0,lastPoll=0,pendingKeys=0;
 static uint32_t volumeRepeatAt=0;static uint8_t volumeHeld=255;
+static adc_oneshot_unit_handle_t batteryAdc=nullptr;
+static adc_cali_handle_t batteryCalibration=nullptr;
+static hackerphone::BatteryGauge batteryGauge;
+static bool batteryConfigured=false;
+static BatterySample batterySamples[32];static unsigned batteryNext=0,batteryCount=0;
+bool batteryHistory(unsigned age,BatterySample& sample){if(age>=batteryCount)return false;sample=batterySamples[(batteryNext+31-age)%32];return true;}
+static void batteryRecord(uint32_t now,uint16_t mv,uint8_t inputs,bool valid,bool host,bool charging){batterySamples[batteryNext]={now,mv,inputs,valid,host,charging};batteryNext=(batteryNext+1)%32;if(batteryCount<32)++batteryCount;}
 static bool rd(uint8_t addr,uint8_t reg,uint8_t* out,size_t n){
   Wire.beginTransmission(addr);Wire.write(reg);
   if(Wire.endTransmission(false)!=0||Wire.requestFrom(addr,uint8_t(n))!=n){++i2cErrors;return false;}
@@ -37,6 +48,34 @@ bool ledsBegin(){for(unsigned i=0;i<8;++i)if(!ledWrite(i,0))return false;return 
 bool audioEnable(bool on){return mask(0x21,3,on?2:0,on?0:2)&&mask(0x21,7,0,2);}
 bool powerPressed(){return digitalRead(2)==HIGH;}
 bool powerCut(){return mask(0x21,3,0,1)&&mask(0x21,7,0,1);}
+bool batteryReady(){return batteryConfigured;}
+hackerphone::BatteryStatus batteryStatus(uint32_t now){return batteryGauge.status(now);}
+static void batteryBegin(){
+  // Sample evidence: ADC1 channel 2 (GPIO3), 12 dB; CALIB_EN is U9 P1_2.
+  // Release the TL431 test clamp and keep U9 P1_6 (active-low charge) as input.
+  if(!mask(0x21,3,0,0x04)||!mask(0x21,7,0x40,0x04))return;
+  adc_oneshot_unit_init_cfg_t unit{};unit.unit_id=ADC_UNIT_1;
+  if(adc_oneshot_new_unit(&unit,&batteryAdc)!=ESP_OK)return;
+  adc_oneshot_chan_cfg_t channel{};channel.atten=ADC_ATTEN_DB_12;channel.bitwidth=ADC_BITWIDTH_12;
+  if(adc_oneshot_config_channel(batteryAdc,ADC_CHANNEL_2,&channel)!=ESP_OK)return;
+  adc_cali_curve_fitting_config_t cal{};cal.unit_id=ADC_UNIT_1;cal.chan=ADC_CHANNEL_2;cal.atten=ADC_ATTEN_DB_12;cal.bitwidth=ADC_BITWIDTH_12;
+  batteryConfigured=adc_cali_create_scheme_curve_fitting(&cal,&batteryCalibration)==ESP_OK;
+}
+void batteryTick(uint32_t now){
+  static uint32_t last=0,total=0;static unsigned samples=0;
+  static bool previousExternal=false;
+  if(uint32_t(now-last)<250)return;last=now;
+  uint8_t inputs=0;bool pins=rd(0x21,1,&inputs,1);
+  bool charging=pins&&!(inputs&0x40),host=HWCDC::isPlugged();
+  bool external=host||charging;
+  if(external!=previousExternal){total=samples=0;batteryGauge.update(0,false,host,charging,now);previousExternal=external;}
+  int raw=0,mv=0;
+  bool valid=batteryConfigured&&pins&&adc_oneshot_read(batteryAdc,ADC_CHANNEL_2,&raw)==ESP_OK&&adc_cali_raw_to_voltage(batteryCalibration,raw,&mv)==ESP_OK&&mv>0&&mv<1600;
+  if(!valid){total=samples=0;batteryGauge.update(0,false,host,charging,now);batteryRecord(now,0,inputs,false,host,charging);return;}
+  total+=uint32_t(mv);++samples;
+  // Eight readings per update; do not carry USB rail voltage into a battery estimate.
+  if(samples==8){uint16_t rail=(uint64_t(total)*41184+samples*5000)/(samples*10000);batteryGauge.update(rail,true,host,charging,now);batteryRecord(now,rail,inputs,true,host,charging);total=samples=0;}
+}
 void modemShutdown(){modem.print("AT+QPOWD=1\r");}
 bool begin(){
   Serial.println("HP_STAGE i2c");
@@ -51,6 +90,7 @@ bool begin(){
   keysReady=mask(0x20,6,0xff,0)&&mask(0x20,7,0x77,0)&&mask(0x21,6,0x7f,0)&&mask(0x21,7,0x18,0);
   // Keep the speaker amplifier muted until the audio pipeline is verified.
   mask(0x21,3,0,2);mask(0x21,7,0,2);
+  batteryBegin();
   Serial.println("HP_STAGE display");
   if(!displayBegin()){Serial.println("HP_FAIL panel SPI");return false;}
   Serial.println("HP_STAGE framebuffer");

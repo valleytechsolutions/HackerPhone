@@ -84,9 +84,28 @@ static bool startCellHotspot(){auto c=cellularStatus();if(!c.connected||cellular
 static uint16_t color(uint32_t c){return mp24::lcd.color565(c>>16,c>>8,c);}
 static void text(int x,int y,const String& s,uint16_t fg=TFT_WHITE){mp24::frame.setTextColor(fg);mp24::frame.drawString(s,x,y,1);}
 static void wrap(int x,int y,const String& s,int width=24,int maxLines=7){for(int line=0;line<maxLines&&size_t(line*width)<s.length();++line)text(x,y+line*10,s.substring(line*width,(line+1)*width));}
+static void batteryIndicator(){
+  auto b=mp24::batteryStatus(millis());auto& f=mp24::frame;
+  bool cell=b.power==BatteryPower::Battery;uint16_t fg=b.low?TFT_RED:theme().accent;
+  char label[6];if(cell)snprintf(label,sizeof(label),"~%u%%",b.percent);else snprintf(label,sizeof(label),"%s",b.power==BatteryPower::Charging?"CHG":b.power==BatteryPower::Usb?"USB":"--");
+  text(112,4,label,cell||b.power!=BatteryPower::Unknown?fg:theme().muted);
+  f.drawRect(144,3,12,9,fg);f.fillRect(156,6,2,3,fg);
+  if(cell){unsigned width=(unsigned(b.percent)*8+99)/100;if(width)f.fillRect(146,5,width,5,fg);}
+  else if(b.power==BatteryPower::Usb||b.power==BatteryPower::Charging){f.drawLine(150,4,147,8,fg);f.drawLine(147,8,152,6,fg);f.drawLine(152,6,149,10,fg);}
+}
+static void homeLogo(){
+  const uint16_t* pixels=vtsPixels;int width=vtsWidth,height=vtsHeight;
+  switch(theme().logo){
+    case ThemeLogo::Bwm:pixels=bwmPixels;width=bwmWidth;height=bwmHeight;break;
+    case ThemeLogo::Biscuit:pixels=biscuitPixels;width=biscuitWidth;height=biscuitHeight;break;
+    case ThemeLogo::Marauder:pixels=marauderPixels;width=marauderWidth;height=marauderHeight;break;
+    default:break;
+  }
+  mp24::frame.setSwapBytes(true);mp24::frame.pushImage(79+(80-width)/2,30+(86-height)/2,width,height,pixels);
+}
 static void header(const char* title){auto& f=mp24::frame;auto net=networkStatus();bool tx=attackStatus.active||lab.mode!=LabMode::Off||trackerLive.active;
   const char* state=tx?"TX ACTIVE":net.portal?"PORTAL":net.hotspot?"WiFi AP":net.connecting?"JOINING":net.connected?(net.busy?"NET SCAN":"WiFi STA"):storageStatus.recording?"REC PCAP":radioRunning?(radioBle?(bleActiveScan?"BLE ASK":"BLE RX"):"WiFi RX"):"IDLE";
-  f.fillSprite(theme().background);f.fillRect(0,0,160,15,theme().bar);text(5,4,title);text(5,18,simName(),theme().muted);text(102,18,state,tx||storageStatus.recording||net.hotspot?TFT_ORANGE:theme().accent);f.drawFastHLine(0,29,160,0x39e7);}
+  f.fillSprite(theme().background);f.fillRect(0,0,160,15,theme().bar);text(5,4,String(title).substring(0,17));batteryIndicator();text(5,18,simName(),theme().muted);text(102,18,state,tx||storageStatus.recording||net.hotspot?TFT_ORANGE:theme().accent);f.drawFastHLine(0,29,160,0x39e7);}
 static void footer(const String& help){mp24::frame.fillRect(0,116,160,12,TFT_BLACK);text(3,118,help,theme().muted);}
 static void showResult(Request result){
   const char* names[]={"Request queued","Modem busy","Insert a SIM first","No cellular network","Invalid input","70-character SMS limit","Text not supported yet"};
@@ -392,7 +411,7 @@ static void render(uint32_t now){
   if(shuttingDown){header("POWER OFF");text(12,49,"Saving and stopping...");text(12,68,"Release red button",theme().accent);text(12,90,"USB may keep power on",theme().muted);mp24::present();return;}
   if(locked){f.fillSprite(TFT_BLACK);text(56,42,"LOCKED",theme().accent);text(14,65,"Tap red button to wake");if(volumeAt&&uint32_t(now-volumeAt)<1500)text(45,86,String("Volume ")+musicStatus().volume+"%");mp24::present();return;}
   if(screen==Screen::Home){
-    header("HACKERPHONE");f.setSwapBytes(true);f.pushImage(79,30,vtsWidth,vtsHeight,vtsPixels);
+    header("HACKERPHONE");homeLogo();
     static const char* names[]={"Phone","Messages","Security","Infrared","SD files","Settings","Hardware","Music"};
     for(int row=0,first=menu/6*6;row<6&&first+row<8;++row){int i=first+row;if(i==menu)f.fillRoundRect(2,33+row*13,75,12,2,theme().selection);else f.fillRect(2,33+row*13,75,12,theme().background);text(5,35+row*13,names[i]);}
     footer("A:Open  C:Home");
@@ -544,6 +563,8 @@ static void serialCommands(uint32_t now){
   while(Serial.available()){char c=Serial.read();if(c=='\r')continue;if(c!='\n'){if(!overflow&&n+1<sizeof(line))line[n++]=c;else overflow=true;continue;}line[n]=0;n=0;if(overflow){overflow=false;Serial.println("HP_ERROR Command too long");continue;}
     if(shuttingDown){Serial.println("HP_SHUTTING_DOWN");continue;}
     if(!ready&&strcmp(line,"INFO")&&strcmp(line,"DISPLAY")){Serial.println("HP_NOT_READY Use INFO or DISPLAY");continue;}
+    if(!strcmp(line,"BATTERY")){auto b=mp24::batteryStatus(now);Serial.printf("HP_BATTERY ready=%u source=%u mv=%u percent=%d low=%u\n",mp24::batteryReady(),unsigned(b.power),b.millivolts,b.power==BatteryPower::Battery?int(b.percent):-1,b.low);continue;}
+    if(!strcmp(line,"BATTERY HISTORY")){for(int age=31;age>=0;--age){mp24::BatterySample b;if(mp24::batteryHistory(age,b))Serial.printf("HP_BATTERY_SAMPLE at=%lu mv=%u inputs=%u valid=%u host=%u charging=%u\n",(unsigned long)b.at,b.railMv,b.inputs,b.valid,b.host,b.charging);}Serial.println("HP_BATTERY_HISTORY_END");continue;}
     if(!strcmp(line,"PHONE STATUS")){const auto& p=phone.state();Serial.printf("HP_PHONE online=%u sim=%u eps=%u cs=%u ps=%u signal=%d known=%u call=%u busy=%u timeouts=%lu malformed=%lu error=%s\n",p.online,unsigned(p.sim),p.registration,p.circuitRegistration,p.packetRegistration,p.signalDbm,p.signalKnown,unsigned(p.call),phone.busy(),(unsigned long)p.timeouts,(unsigned long)p.malformedLines,p.error);continue;}
     if(!strncmp(line,"PHONE QUERY ",12)){Serial.printf("HP_PHONE_QUERY result=%u\n",unsigned(phone.inspect(line+12,now)));continue;}
     if(!strncmp(line,"PHONE DIAL ",11)){Serial.printf("HP_PHONE_DIAL result=%u\n",unsigned(phone.dial(line+11,now)));continue;}
@@ -733,7 +754,7 @@ void setup(){
   auto& f=mp24::frame;f.fillSprite(TFT_BLACK);f.setSwapBytes(true);f.pushImage((160-bwmWidth)/2,7,bwmWidth,bwmHeight,bwmPixels);text(44,91,"HACKERPHONE");text(19,107,"Engineering preview",theme().muted);mp24::present();
   storageBegin();mp24::modemBegin();delay(1200);Serial.println("HP_READY MP24 engineering preview 0.6.0-dev");
 }
-void loop(){if(!ready){serialCommands(millis());delay(10);return;}uint32_t now=millis();mp24::modemPoll(phone,now);serialCommands(now);now=millis();key(mp24::key(now),now);now=millis();
+void loop(){if(!ready){serialCommands(millis());delay(10);return;}uint32_t now=millis();mp24::modemPoll(phone,now);serialCommands(now);now=millis();key(mp24::key(now),now);if(!shuttingDown)mp24::batteryTick(now);now=millis();
   auto pe=powerButton.update(mp24::powerPressed(),now);
   if(!shuttingDown&&pe==PowerEvent::Lock){locked=!locked;mp24::backlight(!locked);}
   if(!shuttingDown&&pe==PowerEvent::Shutdown){shuttingDown=true;shutdownAt=now;fileCancel();locked=false;stopTools();musicStop();nextMusic=0;if(logging){session.flush();session.close();logging=false;}preferences.putUChar("volume",musicStatus().volume);voiceStop();cellularStop();mp24::backlight(true);}

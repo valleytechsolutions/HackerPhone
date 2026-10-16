@@ -210,3 +210,34 @@ The tested 0.6 engineering application is **1,854,128 bytes**, SHA-256
 It was written only at `0x10000` after verifying the connected chip and private
 full-flash recovery backup; the flashing tool verified the write. A copy of this
 application is retained privately alongside the original recovery files.
+
+## Battery indicator and theme logos — 2026-10-16
+
+- The sample's recovered ADC1 channel 2, divider factor and clamp/charging
+  assignments were added to the hardware notes. eFuse ADC calibration initialized
+  successfully. USB-connected samples measured approximately 4.58–4.59 V on the
+  shared rail and displayed CHG with no misleading percentage.
+- The owner confirmed a percentage appeared after unplugging. A bounded RAM
+  history independently recorded 4,111–4,116 mV with USB host and charging inputs
+  both clear, followed by 4.58–4.59 V with both asserted after reconnecting. This
+  validates the source transition, not the accuracy of a complete discharge
+  curve or a remaining-hours estimate.
+- Native checks pass 30 groups plus the band tests. Battery cases cover invalid
+  and stale samples, USB/charging suppression, transition filter reset, low
+  charge, bounded monotonic percentage and the millisecond clock wrapping.
+- Six saved theme choices now select home artwork. The four original theme
+  indices are retained; Biscuit Shop and Marauder are appended. Owner-supplied
+  logos from Dragon Detector 0.13.1 are retained unchanged as source assets and
+  fitted for this display. The BWM boot asset is unchanged.
+
+GitHub Pages was checked during this update: the repository reports
+`has_pages: false` and its standard Pages URL returns HTTP 404. A HackerPhone
+web flasher has not been published.
+
+All six home-screen framebuffers were inspected on the final image. LTE remained
+registered, heap integrity passed, and I2C/display error counts were zero. The
+application is **1,885,856 bytes**, SHA-256
+`ceb7ef73de25b7220ed98c986795fed44169084a087093f5bd18479d67e37991`.
+The matching-chip/recovery check and application-only write at `0x10000` passed;
+the flashing tool verified the write. Private recovery files and unplug history
+remain excluded from Git. VTS Red was restored after the six-theme visual check.

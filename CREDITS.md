@@ -18,5 +18,10 @@ Original HackerPhone services, application, tests and tooling are by Your Pal Ka
 - **Flipper Devices** documents the [`.ir` interchange format](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/documentation/file_formats/InfraredFileFormats.md). HackerPhone's bounded reader, writer, protocol encoders and IR application are independent MIT implementations; no GPL Flipper application source or remote database is incorporated. Espressif's public RMT API supplies capture, carrier handling and transmission. User-added remote databases retain their own licenses and attribution.
 - **Quectel** EG91 command documentation informed independently written AT parsing and SMS submission. The official [EC2x/EG9x/EG2x-G/EM05 AT manual](https://forums.quectel.com/uploads/short-url/cBnrTmjnCg7OGnqRsk8dIpbHuVX.pdf) is referenced, not redistributed.
 - BWM and Valleytech Custom Solutions artwork was supplied by the owner. Original PNGs are retained unchanged; the build tool fits and converts them to RGB565 for the device. Artwork/trademark rights remain with their owners.
+- The optional Biscuit Shop and JustCallMeKoko / Marauder home themes use the
+  owner's unchanged supplied PNGs from Dragon Detector 0.13.1. Their originals
+  are retained in `assets/`; `tools/encode_assets.py` fits them for this panel.
+  Artwork and trademark rights remain with their respective owners. These
+  appearance choices do not imply endorsement or an official firmware port.
 
 The MakerPhone 2 engineering-sample binary was read solely for recovery and hardware identification. It remains private; possession of that binary is not treated as permission to redistribute its code.

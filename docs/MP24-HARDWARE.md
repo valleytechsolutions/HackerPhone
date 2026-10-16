@@ -20,6 +20,8 @@ Identified on 2026-10-14. The owner confirms MakerPhone 2.0 engineering hardware
 | Modem PCM | BCLK 14, frame sync 21, modem-to-host 13, host-to-modem 33 | Factory configuration table and diagnostic arguments; modem initially selected PCM slave, 8 kHz, 16-bit, 2.048 MHz BCLK; see the clock investigation below |
 | Power button | GPIO2, active HIGH, external divider, no internal pulls | Factory boot log |
 | Power latch | XL9555 U9 P1_0: input/floating normally, driven LOW to shut down | Factory power routine/diagnostics; physical battery-only shutdown acceptance pending |
+| Battery sense | ADC1 channel 2 / GPIO3, 12-bit, 12 dB attenuation; rail/ADC factor 4.1184 | Saved sample's ADC configuration and divider constant; not a measured calibration of the owner's cell |
+| Battery test clamp / charge status | U9 (0x21) P1_2 `CALIB_EN` LOW disables the TL431 test clamp; P1_6 is active-low charging input | Saved sample's hardware arguments and battery diagnostics |
 | IR expansion module | RX GPIO42 with pull-up; TX GPIO45 inverted, idle HIGH; factory carrier 38 kHz | Factory module identification (`0xff13`) and its receiver/LEDC initialization |
 
 These are recovered hardware assignments, not copied vendor application routines. A new adapter implements them using public peripheral APIs. The full engineering firmware and disassembly remain private and are not redistributed or assigned an open-source license.
@@ -53,6 +55,15 @@ The IR adapter uses ESP-IDF RMT capture/transmission with hardware carrier remov
 Key mapping: digit 0–9, `*`, `#`, A/B/C/D, joystick up/down/left/right/click, volume up/down. The native scan service debounces 25 ms while polling at 100 Hz and buffers simultaneous new presses. No guesses from original Ringo are used.
 
 The factory diagnostics also reported modem supply readings above its configured 4.3 V warning threshold while USB-powered. This is an unverified ADC report, not a meter measurement; electrical power and battery calibration need validation before a daily-use release.
+
+The battery indicator uses ESP-IDF's eFuse ADC calibration, eight readings per
+two-second update and a smoothed, approximate single-cell Li-ion voltage curve.
+The sensed rail is shared with USB power, so a charging signal, attached USB host
+or rail above 4.5 V suppresses percentage estimation. The original sample labels
+the U8 P1_3 USB-detect divider unreliable; the new indicator does not use it.
+ADC/calibration errors, implausible readings and stale samples display unknown.
+Only the established clamp and charging-input bits are configured, preserving
+the amplifier and power latch. No new automatic shutdown threshold is applied.
 
 The original firmware successfully mounts the installed SD card despite its refusal of optional SPI command CRC control (CMD59). The replacement Arduino 3.3.12 SD driver also mounted this card and passed a dedicated write/read/compare test. The test removed only its own new file. No formatting was performed.
 

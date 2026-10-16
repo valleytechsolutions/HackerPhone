@@ -16,6 +16,42 @@ by the owner. Setup and remaining limits are in [cellular controls](CELLULAR.md)
   keep the board powered; the application then enters deep sleep and wakes on the
   red button. Physical battery-only latch operation still needs acceptance.
 
+## Themes and home logos
+
+Open **Settings → Theme** and press **A** to cycle the saved appearance. Press
+**C** to return home and see its artwork. As in Dragon Detector, VTS Red uses
+the VTS logo; Dragon, Green Radar and Black & Gold use BWM; Biscuit Shop and
+Marauder have their supplied Biscuit and JCMK logos. The original four indices
+are preserved, with the two new choices appended. The boot logo stays BWM.
+The USB command `THEME 0` through `THEME 5` selects the same six choices.
+
+<p><img src="images/home-theme-vts.png" width="240" alt="VTS Red home with VTS logo and charging indicator"> <img src="images/home-theme-bwm.png" width="240" alt="Dragon home with BWM logo"> <img src="images/home-theme-biscuit.png" width="240" alt="Biscuit Shop home with its supplied logo"> <img src="images/home-theme-marauder.png" width="240" alt="Marauder home with JCMK logo"></p>
+
+Actual 160×128 framebuffer captures from the connected MP24 sample. The green
+and black/gold variants also use BWM, matching Dragon Detector's original themes.
+
+## Battery indicator
+
+The top-right header contains a battery icon and **~N%** estimate on battery
+power. At 10% or less it turns red. **USB** means external power is detected;
+**CHG** means the charging-status input is active. **--** means a valid reading
+is unavailable. Allow a few seconds for the indicator to settle after unplugging.
+
+This engineering sample measures a shared supply rail. USB power can raise that
+voltage above the battery's actual voltage, so no percentage is shown while USB
+or charging is detected. The battery estimate is smoothed and voltage-based;
+cell age, load and temperature affect accuracy. It is not a remaining-hours
+estimate or a calibrated fuel gauge. The indicator does not change shutdown
+behavior. Hardware details are in [the board notes](MP24-HARDWARE.md).
+
+USB `BATTERY` reports ADC readiness, power source (`0` unknown, `1` battery,
+`2` USB, `3` charging), measured rail millivolts, estimated percentage (`-1` when
+unavailable) and low-battery state. Stale or invalid readings are never shown as
+a full battery.
+`BATTERY HISTORY` reads the most recent 32 samples retained in RAM, including
+USB-host and charging inputs. This lets a developer inspect an unplug/replug
+transition after reconnecting; it does not write diagnostics to SD.
+
 ## SD music player
 
 Put MP3 files in `/hackerphone/music` or open an MP3 in the SD browser. The decoder

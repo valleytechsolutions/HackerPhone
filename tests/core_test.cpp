@@ -1,4 +1,5 @@
 #include "rtttl.h"
+#include "battery_state.h"
 #include "device_controls.h"
 #include "phone_core.h"
 #include "recon_core.h"
@@ -21,6 +22,24 @@ static void init(PhoneCore& p,uint32_t now=0){p.begin(now);for(unsigned i=0;i<5;
 static void ready(PhoneCore& p){init(p);rx(p,"+CPIN: READY\r\n+CEREG: 2,1\r\n");}
 int main(){
   unsigned groups=0;
+  {
+    BatteryGauge b;assert(b.status(0).power==BatteryPower::Unknown);
+    b.update(4600,true,true,false,100);assert(b.status(100).power==BatteryPower::Usb);
+    b.update(3900,true,false,false,200);assert(b.status(200).percent==65&&b.status(200).millivolts==3900);
+    b.update(3500,true,false,false,300);assert(b.status(300).millivolts>3500&&!b.status(300).low);
+    for(unsigned i=0;i<32;++i)b.update(3500,true,false,false,400+i);
+    assert(b.status(500).low&&b.status(500).percent<=10);
+    b.update(4000,true,false,true,600);assert(b.status(600).power==BatteryPower::Charging&&!b.status(600).low);
+    b.update(4501,true,false,false,700);assert(b.status(700).power==BatteryPower::Usb);
+    b.update(4400,true,false,false,800);assert(b.status(800).power==BatteryPower::Unknown);
+    b.update(0,false,false,false,900);assert(b.status(900).power==BatteryPower::Unknown);
+    b.update(0,false,true,false,1000);assert(b.status(1000).power==BatteryPower::Usb);
+    b.update(2700,true,false,false,1100);assert(b.status(1100).power==BatteryPower::Unknown);
+    b.update(4200,true,false,false,0xfffffff0u);assert(b.status(20).percent==100);
+    assert(b.status(10000).power==BatteryPower::Unknown);
+    uint8_t before=0;for(unsigned mv=2800;mv<=4300;++mv){auto percent=batteryPercent(mv);assert(percent>=before&&percent<=100);before=percent;}
+    assert(batteryPercent(3300)==0&&batteryPercent(3600)==10);++groups;
+  }
   {
     Wire w;PhoneCore p(w);ready(p);rx(p,"+CEREG: 2,1\r\n+CREG: 0\r\n+CGREG: 2,5\r\n");
     assert(p.state().registration==1&&p.state().circuitRegistration==0&&p.state().packetRegistration==5);
