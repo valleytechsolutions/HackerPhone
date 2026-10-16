@@ -13,6 +13,7 @@ struct PhoneState {
   Sim sim=Sim::Unknown;
   Call call=Call::Idle;
   uint8_t registration=0;
+  uint8_t circuitRegistration=0,packetRegistration=0;
   int16_t signalDbm=-127;
   bool signalKnown=false;
   char caller[24]{};
@@ -32,6 +33,7 @@ struct AtTransport {
 };
 
 struct SmsPdu { char hex[333]{}; uint16_t tpduBytes=0; uint8_t characters=0; };
+struct PhoneDiagnostic { Outcome outcome=Outcome::None; bool truncated=false; char command[80]{},reply[1536]{}; };
 bool validNumber(const char* number);
 Request encodeSms(const char* number,const char* utf8,SmsPdu& out);
 
@@ -46,16 +48,23 @@ class PhoneCore {
   Request answer(uint32_t now);
   Request hangup(uint32_t now);
   Request sendSms(const char* number,const char* utf8,uint32_t now);
+  Request inspect(const char* command,uint32_t now);
+  Request configure(const char* setting,uint32_t now);
+  const PhoneDiagnostic& diagnostic() const { return diagnostic_; }
   const PhoneState& state() const { return state_; }
   bool busy() const;
+  void suspend(bool value){suspended_=value;}
  private:
-  enum class Cmd : uint8_t { None, Probe, Echo, Errors, Clip, SmsNotice, SimQuery, RegQuery, Signal, Calls, Dial, Answer, Hangup, SmsMode, SmsPrompt, SmsBody };
+  enum class Cmd : uint8_t { None, Probe, Echo, Errors, Clip, SmsNotice, SimQuery, RegQuery, Signal, Calls, Dial, Answer, Hangup, SmsMode, SmsPrompt, SmsBody, Diagnostic, Resync };
   AtTransport& transport_;
   PhoneState state_{};
+  PhoneDiagnostic diagnostic_{};
   Cmd active_=Cmd::None;
   uint32_t sentAt_=0, timeoutMs_=0, pollAt_=0, settleAt_=0;
   uint8_t initStep_=0, pollStep_=0;
   bool started_=false, settling_=false, discard_=false, smsAck_=false, callSeen_=false;
+  bool suspended_=false;
+  bool resyncSeen_=false,recoverAllowed_=true;
   char line_[384]{}; size_t lineSize_=0;
   SmsPdu pdu_{};
   bool command(Cmd kind,const char* text,uint32_t now,uint32_t timeout=5000);
@@ -64,5 +73,6 @@ class PhoneCore {
   void abort(uint32_t now,const char* error,bool uncertain=false);
   void error(const char* text);
   Request available() const;
+  Request diagnosticCommand(const char* text,uint32_t now,uint32_t timeout=10000);
 };
 }

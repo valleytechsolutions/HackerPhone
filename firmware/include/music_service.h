@@ -11,6 +11,7 @@ bool musicPlay(const char* path);
 bool musicTone();
 bool musicRtttl(const char* text,uint8_t level=100);
 void musicCallPause(bool pause);
+void musicVoice(bool active);
 void musicCancelAlert();
 void musicStop();
 void musicPause();

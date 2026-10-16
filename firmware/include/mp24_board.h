@@ -23,5 +23,7 @@ bool powerCut();
 void modemShutdown();
 struct ModemTransport:hackerphone::AtTransport{bool write(const char* p,size_t n)override;};
 void modemBegin();
+void modemReleaseUart();
+void modemResumeUart();
 void modemPoll(hackerphone::PhoneCore& phone,uint32_t now);
 }

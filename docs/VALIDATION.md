@@ -149,3 +149,64 @@ An oversized 1,200-character line was rejected, and the next command succeeded.
 A copy command with two long SD paths also completed and exported byte-exactly.
 Heap integrity and display diagnostics passed afterward. No default melody or
 volume was changed by this fix.
+
+
+## 0.6 cellular, hotspot and SD preview — 2026-10-16
+
+- The activated Mint SIM was blocked from LTE by the modem's saved WCDMA-only
+  network setting. Automatic selection restored EPS registration; Mint LTE
+  bands 2 and 4 were observed. Context 1 now uses `Wholesale` / IPv4+IPv6;
+  existing IMS and emergency contexts were preserved. The T-Mobile VoLTE MBN
+  was already selected/active; IMS was enabled and read back after a restart.
+- Cellular PPP runs through CMUX while AT call/status commands retain their
+  channel. A request explicitly bound to the PPP interface returned HTTP 200.
+  A laptop joined the WPA2 hotspot, received DHCP, resolved a name using the
+  cellular DNS server and fetched HTTP 200 through the phone's NAT. The client
+  sockets were bound to Wi-Fi to exclude the laptop's other internet interface.
+  Its previous Wi-Fi connection was restored after the test.
+- Hotspot start/stop and PPP return to ordinary AT operation passed. Network-only
+  startup no longer initializes unused BLE, leaving about 92 KB of internal
+  heap in the measured hotspot state instead of about 34 KB. Heap-integrity
+  checks passed. This is a short functional check, not throughput, thermal or
+  battery endurance qualification; the modem UART remains at 115200 baud.
+- The owner's 64 GB card mounted at 62,883,102,720 bytes and passed the dedicated
+  write/read test without formatting. Directory enumeration now yields between
+  small batches, retains 32 entries per page, and text previews page through
+  168-byte chunks. Cellular and SD-browser framebuffer layouts were inspected.
+- A 600-note synthetic RTTTL file larger than the old USB/text limit loaded from
+  SD, read back exactly and completed playback with zero audio errors. The
+  original call tone was restored. The new bounds are 8,192 bytes, 1,024 notes
+  and ten minutes. No complete copyrighted game theme was added.
+- The call investigation isolated a PCM compatibility problem. The original
+  2.048 MHz / 8 kHz setting connected calls but exceeded the ESP32-S3's 128-bit
+  frame limit. Lower 256/1024 kHz settings caused calls to fail; restoring the
+  original setting restored call setup. Modem-master mode had transfer errors.
+  Using 16 kHz samples and eight 16-bit slots preserves 2.048 MHz within the
+  frame limit. Local tone and live-call PCM transfers then had zero errors;
+  **the owner confirmed speech in both directions on the new call**. The modem
+  accepted `+QDAI: 1,1,0,4,0,1,1,1`. Earlier release reports (`6,264` and `0,21`)
+  are retained privately and are not treated as a general carrier diagnosis.
+- GNSS start/status/stop commands worked, but no position fix was obtained in
+  the indoor trial. Recon missions can retain unlocated Wi-Fi/BLE observations;
+  no measured-coordinate or geolocated WiGLE claim is made.
+- Portable tests pass 29 groups plus the band protocol tests, including 40,000
+  malformed/random radio inputs and 40,000 malformed companion packets. Both
+  the MP24 image and compile-only C3 core build pass. The Maker Band still has
+  no complete recovery backup or verified pinout and is not flashable yet.
+
+SMS delivery/inbox, long-duration calling, a GNSS fix, sustained hotspot use,
+Maker Band hardware pairing and the public dual-device web flasher remain open.
+Private identifiers, credentials, recovery images and captures are excluded from
+Git. Current modem settings are recorded in the private diagnostic logs.
+
+After the successful two-way call, the final image again returned HTTP 200 from
+the PPP-bound internet test and started the hotspot with NAT enabled. Internal
+heap was 92,276 bytes, heap integrity passed, and display/I2C error counts were
+zero. The test ended with data and hotspot stopped. Modem readback retained
+automatic network selection, enabled IMS and the working 16 kHz PCM setting.
+
+The tested 0.6 engineering application is **1,854,128 bytes**, SHA-256
+`f90fc6939a417b21195b87b80c504620c6303a47c34496f30d84364285bf2942`.
+It was written only at `0x10000` after verifying the connected chip and private
+full-flash recovery backup; the flashing tool verified the write. A copy of this
+application is retained privately alongside the original recovery files.

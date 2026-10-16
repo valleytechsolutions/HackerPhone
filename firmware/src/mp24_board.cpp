@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <esp_heap_caps.h>
 #include <driver/gpio.h>
+#include "cellular_service.h"
 
 namespace mp24 {
 TFT_eSPI lcd;
@@ -78,7 +79,9 @@ Key key(uint32_t now){
   return None;
 }
 void present(){displayPresent(frame.getPointer());}
-bool ModemTransport::write(const char* p,size_t n){return modem.write(reinterpret_cast<const uint8_t*>(p),n)==n;}
+bool ModemTransport::write(const char* p,size_t n){if(hackerphone::cellularOwnsModem())return hackerphone::cellularWrite(p,n);return modem.write(reinterpret_cast<const uint8_t*>(p),n)==n;}
+void modemReleaseUart(){modem.end();}
+void modemResumeUart(){modem.setRxBufferSize(2048);modem.begin(115200,SERIAL_8N1,18,17);}
 void modemBegin(){
   // Pins recovered from the sample's UART1 configuration, not original Ringo.
   gpio_set_level(GPIO_NUM_12,0);pinMode(12,OUTPUT);gpio_set_level(GPIO_NUM_16,0);pinMode(16,OUTPUT);
@@ -86,6 +89,7 @@ void modemBegin(){
   modem.setRxBufferSize(2048);modem.begin(115200,SERIAL_8N1,18,17);
 }
 void modemPoll(hackerphone::PhoneCore& phone,uint32_t now){
+  if(hackerphone::cellularOwnsModem()){hackerphone::cellularPoll(phone,now);return;}
   static bool begun=false,pulsed=false,pulsing=false,probeSent=false;
   static uint32_t bootAt=now,pulseAt=0;static char probe[160]{};static size_t used=0;
   uint8_t data[192];size_t n=0;

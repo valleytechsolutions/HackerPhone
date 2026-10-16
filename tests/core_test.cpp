@@ -22,6 +22,30 @@ static void ready(PhoneCore& p){init(p);rx(p,"+CPIN: READY\r\n+CEREG: 2,1\r\n");
 int main(){
   unsigned groups=0;
   {
+    Wire w;PhoneCore p(w);ready(p);rx(p,"+CEREG: 2,1\r\n+CREG: 0\r\n+CGREG: 2,5\r\n");
+    assert(p.state().registration==1&&p.state().circuitRegistration==0&&p.state().packetRegistration==5);
+    assert(p.inspect("AT+CFUN=0",101)==Request::Invalid);
+    assert(p.inspect("AT+CEREG?;ATD123",101)==Request::Invalid);
+    assert(p.inspect("AT+QNWINFO",101)==Request::Accepted);
+    assert(p.inspect("AT+CSQ",102)==Request::Busy);
+    rx(p,"+QNWINFO: \"FDD LTE\",\"310260\",\"LTE BAND 4\",2100\r\nOK\r\n",103);
+    assert(p.diagnostic().outcome==Outcome::Accepted&&strstr(p.diagnostic().reply,"FDD LTE"));
+    assert(p.inspect("ATI",104)==Request::Accepted);for(unsigned i=0;i<50;++i)rx(p,"synthetic diagnostic text only, no private identifiers\r\n",105);
+    rx(p,"OK\r\n",106);assert(p.diagnostic().truncated);
+    assert(p.configure("AT+CFUN=0",107)==Request::Invalid);
+    assert(p.configure("AUTO\rATD123",107)==Request::Invalid);
+    assert(p.configure("AUTO",107)==Request::Accepted);
+    assert(w.bytes.find("AT+QCFG=\"nwscanmode\",0,1\r")!=std::string::npos);
+    assert(p.configure("MINT",107)==Request::Busy);rx(p,"OK\r\n",107);
+    assert(p.configure("MINT",107)==Request::Accepted);
+    assert(w.bytes.find("AT+CGDCONT=1,\"IPV4V6\",\"Wholesale\"\r")!=std::string::npos);rx(p,"OK\r\n",107);
+    p.suspend(true);auto before=w.bytes;p.tick(20000);
+    assert(p.inspect("AT",20001)==Request::Busy&&p.dial("123",20001)==Request::Busy&&w.bytes==before);
+    p.suspend(false);
+    rx(p,"RING\r\n",107);assert(p.inspect("AT",108)==Request::Busy);++groups;
+    assert(p.configure("RESTART",108)==Request::Busy);
+  }
+  {
     Wire w;PhoneCore p(w);init(p);p.tick(10);rx(p,"+CME ERROR: SIM not inserted\r\n",11);
     assert(p.state().sim==Sim::Absent&&p.state().online);
     assert(p.dial("+15551234567",12)==Request::NoSim);
@@ -70,7 +94,11 @@ int main(){
     Wire w;PhoneCore p(w);ready(p);p.sendSms("123","hello",101);rx(p,"OK\r\n",102);rx(p,"> ",103);
     p.tick(120104);assert(p.state().smsOutcome==Outcome::Uncertain&&!p.state().online);
     std::string writes=w.bytes;rx(p,"+CMGS: 7\r\nOK\r\n",120105);p.tick(900000);
-    assert(p.state().smsOutcome==Outcome::Uncertain&&w.bytes==writes);++groups;
+    assert(p.state().smsOutcome==Outcome::Uncertain&&w.bytes==writes+"AT+CMEE?\r");
+    rx(p,"OK\r\n",900001);assert(!p.state().online);
+    rx(p,"+CMEE: 2\r\nOK\r\n",900002);assert(p.state().online&&p.state().smsOutcome==Outcome::Uncertain);
+    p.tick(900003);assert(w.bytes==writes+"AT+CMEE?\rATE0\r");
+    p.begin(900004);assert(p.state().smsOutcome==Outcome::Uncertain);++groups;
   }
   {
     Wire w;PhoneCore p(w);ready(p);p.sendSms("123","hello",101);rx(p,"OK\r\n",102);
@@ -303,6 +331,8 @@ int main(){
   {
     RtttlTone t;assert(parseRtttl("Test:d=8,o=4,b=120:a,p,4c#5.,g.5",t));assert(t.count==4&&t.notes[0].frequency==440&&t.notes[0].milliseconds==250&&t.notes[1].frequency==0&&t.notes[2].milliseconds==750&&t.notes[3].milliseconds==375);
     assert(parseRtttl("Communicator:d=16,o=8,b=100:c#,p,c#,p,b7,c#,p,e,p,c#,p,p",t)&&t.count==12&&t.notes[0].frequency==4435);
+    std::string longTune="Long test:d=8,o=4,b=120:";for(unsigned i=0;i<300;++i){if(i)longTune+=",";longTune+="a";}assert(parseRtttl(longTune.c_str(),t)&&t.count==300&&t.duration==75000);
+    std::string tooMany="Bounds:d=64,o=4,b=900:";for(unsigned i=0;i<=RtttlMaxNotes;++i){if(i)tooMany+=",";tooMany+="p";}assert(!parseRtttl(tooMany.c_str(),t));
     for(auto bad:{"",":d=4:c","Test:d=3:c","Test:o=9:c","Test:b=0:c","Test:d=4,d=4:c","Test:d=4:c,","Test:d=4:x","Test:d=4:p#","Test:d=4:999999999999c","Test:d=4:c..","Test:d=4:c2","Test:d=4:c5x","Test:d=4,"})assert(!parseRtttl(bad,t));++groups;
   }
   printf("PASS %u test groups: phone, SMS, recon, storage, vendor DB, traffic, attack bounds, AP details, SAE, network parsing and IR; 40,000 malformed/random radio frames\n",groups);

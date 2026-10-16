@@ -63,7 +63,7 @@ class Callbacks:public NimBLEScanCallbacks {
   }
 };
 static Callbacks callbacks;
-bool radioPrepare(){
+bool radioPrepare(bool withBle){
   if(!beacons){beacons=static_cast<CachedBeacon*>(ps_calloc(16,sizeof(CachedBeacon)));if(!beacons)return false;}
   if(!pool){
     pool=static_cast<Packet*>(ps_malloc(sizeof(Packet)*48));if(!pool)return false;
@@ -90,13 +90,13 @@ bool radioPrepare(){
     esp_wifi_set_promiscuous_filter(&filter);esp_wifi_set_promiscuous_rx_cb(wifiRx);
     wifi_promiscuous_filter_t controls{WIFI_PROMIS_CTRL_FILTER_MASK_ALL};esp_wifi_set_promiscuous_ctrl_filter(&controls);
   }
-  if(!scan){
+  if(withBle&&!scan){
     if(!NimBLEDevice::init(""))return false;
     scan=NimBLEDevice::getScan();if(!scan)return false;scan->setScanCallbacks(&callbacks,true);
     NimBLEDevice::setSecurityAuth(false,false,true);
     scan->setActiveScan(bleActiveScan);scan->setInterval(100);scan->setWindow(85);scan->setMaxResults(0);scan->setDuplicateFilter(false);
   }
-  return scan!=nullptr;
+  return !withBle||scan!=nullptr;
 }
 bool radioStart(){
   if(radioRunning)return true;if(!radioPrepare())return false;

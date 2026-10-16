@@ -25,6 +25,7 @@ static QueueHandle_t jobs=nullptr;
 struct Form {uint32_t at=0,address=0;uint16_t size=0;uint8_t body[512]{};};
 static QueueHandle_t forms=nullptr;
 static esp_netif_t* station=nullptr;static esp_netif_t* accessPoint=nullptr;
+static bool tethered=false;
 static NetworkStatus status;
 static char rows[64][64]{};
 static std::atomic<bool> cancel{false},portalRunning{false};
@@ -151,7 +152,7 @@ static void worker(void*){
   }
 }
 static bool prepare(){
-  if(ready)return true;if(jobs)return false;if(!radioPrepare())return false;
+  if(ready)return true;if(jobs)return false;if(!radioPrepare(false))return false;
   mutex=xSemaphoreCreateMutex();jobs=xQueueCreate(1,sizeof(Job));forms=xQueueCreate(4,sizeof(Form));
   if(!mutex||!jobs||!forms)return false;
   station=esp_netif_create_default_wifi_sta();accessPoint=esp_netif_create_default_wifi_ap();
@@ -159,13 +160,18 @@ static bool prepare(){
   esp_event_handler_register(WIFI_EVENT,WIFI_EVENT_STA_DISCONNECTED,event,nullptr);esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,event,nullptr);
   ready=xTaskCreate(worker,"hp-network",8192,nullptr,1,nullptr)==pdPASS;return ready;
 }
-NetworkStatus networkStatus(){if(!mutex)return status;xSemaphoreTake(mutex,portMAX_DELAY);auto result=status;xSemaphoreGive(mutex);
+NetworkStatus networkStatus(){if(!mutex)return status;xSemaphoreTake(mutex,portMAX_DELAY);auto result=status;xSemaphoreGive(mutex);result.tethered=tethered;
   auto iface=result.hotspot?accessPoint:station;if(iface){result.interfaceUp=esp_netif_is_netif_up(iface);if(result.hotspot){esp_netif_ip_info_t ip{};if(esp_netif_get_ip_info(iface,&ip)==ESP_OK)result.address=ntohl(ip.ip.addr);}}return result;}
 bool networkRow(unsigned index,char* out,size_t cap){if(!mutex||!out||!cap)return false;xSemaphoreTake(mutex,portMAX_DELAY);bool ok=index<status.rows;if(ok)snprintf(out,cap,"%s",rows[index]);xSemaphoreGive(mutex);return ok;}
 void networkCancelProbe(){cancel=true;portalRunning=false;uploadCancel();}
 bool networkClaimExternal(){if(!mutex)return false;xSemaphoreTake(mutex,portMAX_DELAY);bool ok=status.connected&&!status.busy;if(ok)status.busy=true;xSemaphoreGive(mutex);return ok;}
 void networkReleaseExternal(const char* text){if(!mutex)return;xSemaphoreTake(mutex,portMAX_DELAY);status.busy=false;snprintf(status.message,sizeof(status.message),"%s",text);xSemaphoreGive(mutex);}
-void networkStop(){networkCancelProbe();if(!mutex)return;auto s=networkStatus();if(s.connected||s.connecting)esp_wifi_disconnect();if(s.connected||s.connecting||s.hotspot)esp_wifi_set_mode(WIFI_MODE_NULL);xSemaphoreTake(mutex,portMAX_DELAY);status.connecting=status.connected=status.hotspot=status.portal=false;status.address=status.mask=status.gateway=0;xSemaphoreGive(mutex);}
+void networkStop(){networkCancelProbe();networkTether(false);if(!mutex)return;auto s=networkStatus();if(s.connected||s.connecting)esp_wifi_disconnect();if(s.connected||s.connecting||s.hotspot)esp_wifi_set_mode(WIFI_MODE_NULL);xSemaphoreTake(mutex,portMAX_DELAY);status.connecting=status.connected=status.hotspot=status.portal=false;status.address=status.mask=status.gateway=0;xSemaphoreGive(mutex);}
+bool networkTether(bool enable,uint32_t dns){
+ if(!enable){if(tethered&&accessPoint)esp_netif_napt_disable(accessPoint);tethered=false;return true;}
+ auto s=networkStatus();if(!s.hotspot||s.portal||!s.interfaceUp||!accessPoint||!dns)return false;
+ if(!tethered){esp_netif_dhcps_stop(accessPoint);esp_netif_dns_info_t info{};info.ip.type=ESP_IPADDR_TYPE_V4;info.ip.u_addr.ip4.addr=htonl(dns);esp_netif_set_dns_info(accessPoint,ESP_NETIF_DNS_MAIN,&info);uint8_t offer=1;esp_netif_dhcps_option(accessPoint,ESP_NETIF_OP_SET,ESP_NETIF_DOMAIN_NAME_SERVER,&offer,sizeof(offer));esp_netif_dhcps_start(accessPoint);if(esp_netif_napt_enable(accessPoint)!=ESP_OK)return false;tethered=true;message("Hotspot shares cellular data");}return true;
+}
 bool networkJoin(const char* ssid,const char* password){
   if(attackStatus.active||lab.mode!=LabMode::Off||gattStatus().busy||gattStatus().connected||trackerLive.active)return false;
   if(!ssid||!*ssid||strlen(ssid)>32||!password||strlen(password)>63||!prepare()||networkStatus().busy)return false;

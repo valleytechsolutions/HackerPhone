@@ -11,7 +11,7 @@ extern RadioMode radioMode;
 extern uint8_t channelLock;
 void radioSetMode(RadioMode mode);
 void radioSetBleActive(bool active);
-bool radioPrepare();
+bool radioPrepare(bool withBle=true);
 bool radioStart();
 void radioStop();
 void radioTick(uint32_t now);

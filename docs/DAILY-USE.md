@@ -2,8 +2,8 @@
 
 HackerPhone 0.5 adds these controls to the MP24 engineering sample. Headphone
 audio, MP3 playback, volume buttons, red-button lock/shutdown/wake, all eight LEDs
-and the retro tone previews were confirmed by the owner. Cellular voice routing
-remains a separate, unfinished audio path.
+and the retro tone previews were confirmed by the owner. The 0.6 preview adds a PCM cellular voice bridge, with two-way speech confirmed
+by the owner. Setup and remaining limits are in [cellular controls](CELLULAR.md).
 
 ## Side controls
 
@@ -63,16 +63,18 @@ See [credits and rights](../CREDITS.md).
 
 Load custom text files from `/hackerphone/tones/call.rtttl`, `sms.rtttl`,
 `recon.rtttl` or `tool.rtttl` with the matching menu action. Valid tones save into
-preferences and remain available without the card. A maximum of 1,024 bytes,
-128 notes, 30 seconds, octaves 3–8 and tempo 25–900 is accepted. For example:
+preferences and remain available without the card. A maximum of 8,192 bytes,
+1,024 notes, ten minutes, octaves 3–8 and tempo 25–900 is accepted. For example:
 
 ```text
 Saved:d=16,o=5,b=180:c,e,g,c6
 ```
 
-An incoming call repeats its alert every six seconds while ringing. Recon tone
-events have a ten-second cooldown. Preview checks exercise synthesis; no live
-SIM call or SMS delivery has been validated.
+An incoming call lets its complete alert finish before repeating, with at least a
+one-second interval between starts. Answering or ending the call cancels playback.
+Recon tone events have a ten-second cooldown. Long files load from SD; the USB
+`TONE SET` line remains limited to 1,024 bytes of tune text. No full copyrighted
+game theme is bundled. Supply your own RTTTL file to use a complete arrangement.
 
 The owner described vibration only during sound playback. That is consistent
 with speaker vibration; no independent motor control is identified in this

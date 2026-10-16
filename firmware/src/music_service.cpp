@@ -18,8 +18,9 @@ static SemaphoreHandle_t mutex=nullptr;
 static QueueHandle_t jobs=nullptr;
 static std::atomic<bool> stopping{false},paused{false},ampWanted{false},repeatTrack{false};
 static std::atomic<unsigned> volume{35};
-static std::atomic<bool> callPause{false},cancelAlert{false};
+static std::atomic<bool> callPause{false},cancelAlert{false},alertPending{false};
 static bool ampOn=false;
+static std::atomic<bool> voiceActive{false};
 struct Job {char path[160]{};bool tone=false,rtttl=false;uint8_t level=100;RtttlTone melody;};
 static i2s_chan_handle_t tx=nullptr;static uint32_t outputRate=0;
 static mp3dec_t* decoder=nullptr;static uint8_t* encoded=nullptr;static int16_t* pcm=nullptr;static int32_t* output=nullptr;
@@ -49,7 +50,7 @@ static void playTune(const Job& job){
  for(unsigned n=0;n<job.melody.count&&!stopping.load()&&!cancelAlert.load();++n){auto note=job.melody.notes[n];unsigned samples=uint32_t(note.milliseconds)*44100/1000,at=0;uint32_t phase=0,step=uint64_t(note.frequency)*0x100000000ULL/44100;
    while(at<samples&&!stopping.load()&&!cancelAlert.load()){unsigned block=std::min(441u,samples-at);for(unsigned i=0;i<block;++i){unsigned pos=at+i;int amp=pos<samples*85/100?6000:0;unsigned fade=std::min(200u,std::min(pos,samples-pos));amp=amp*fade/200;pcm[i]=note.frequency?(phase&0x80000000u?amp:-amp):0;phase+=step;}
      if(!writePcm(block,1,44100,job.level)){cancelAlert=true;break;}at+=block;vTaskDelay(1);}}
- xSemaphoreTake(mutex,portMAX_DELAY);status.alert=false;xSemaphoreGive(mutex);ampWanted=false;
+ xSemaphoreTake(mutex,portMAX_DELAY);status.alert=false;xSemaphoreGive(mutex);alertPending=false;ampWanted=false;
 }
 static void playFile(const Job& job){
  File file=SD.open(job.path,FILE_READ);if(!file||file.isDirectory()){error("Cannot open MP3 on SD");return;}
@@ -99,20 +100,21 @@ static bool prepare(){
  fail:free(decoder);free(encoded);free(pcm);free(output);decoder=nullptr;encoded=nullptr;pcm=nullptr;output=nullptr;return false;
 }
 void musicBegin(uint8_t v,bool r){if(!mutex)mutex=xSemaphoreCreateMutex();volume=std::min<unsigned>(100,v);repeatTrack=r;}
-MusicStatus musicStatus(){if(mutex)xSemaphoreTake(mutex,portMAX_DELAY);auto s=status;if(mutex)xSemaphoreGive(mutex);s.volume=volume.load();s.paused=paused.load()&&s.busy;s.repeat=repeatTrack.load();return s;}
-static bool start(const Job& job){if(!mutex||musicStatus().busy||!prepare())return false;stopping=paused=cancelAlert=false;
+MusicStatus musicStatus(){if(mutex)xSemaphoreTake(mutex,portMAX_DELAY);auto s=status;if(mutex)xSemaphoreGive(mutex);s.volume=volume.load();s.paused=paused.load()&&s.busy;s.repeat=repeatTrack.load();s.alert=s.alert||alertPending.load();return s;}
+static bool start(const Job& job){if(voiceActive.load()||!mutex||musicStatus().busy||!prepare())return false;stopping=paused=cancelAlert=false;
  xSemaphoreTake(mutex,portMAX_DELAY);status.busy=status.playing=true;status.errors=status.frames=status.elapsedMs=status.position=status.rate=0;snprintf(status.path,sizeof(status.path),"%s",job.path);snprintf(status.message,sizeof(status.message),job.tone?"Audio test":"Playing");xSemaphoreGive(mutex);
  if(xQueueSend(jobs,&job,0)==pdTRUE)return true;xSemaphoreTake(mutex,portMAX_DELAY);status.busy=status.playing=false;xSemaphoreGive(mutex);return false;}
 bool musicPlay(const char* path){if(!mp24::cardReady||!safeSdPath(path))return false;String lower(path);lower.toLowerCase();if(!lower.endsWith(".mp3"))return false;Job j;snprintf(j.path,sizeof(j.path),"%s",path);return start(j);}
 bool musicTone(){Job j;j.tone=true;return start(j);}
-bool musicRtttl(const char* text,uint8_t level){Job j;j.rtttl=true;j.level=std::min<uint8_t>(100,level);if(!parseRtttl(text,j.melody))return false;if(!musicStatus().busy)return start(j);if(!jobs||stopping.load())return false;cancelAlert=false;return xQueueSend(jobs,&j,0)==pdTRUE;}
+bool musicRtttl(const char* text,uint8_t level){if(alertPending.load())return false;Job j;j.rtttl=true;j.level=std::min<uint8_t>(100,level);if(!parseRtttl(text,j.melody))return false;alertPending=true;bool ok=false;if(!musicStatus().busy)ok=start(j);else if(jobs&&!stopping.load()){cancelAlert=false;ok=xQueueSend(jobs,&j,0)==pdTRUE;}if(!ok)alertPending=false;return ok;}
 void musicCallPause(bool pause){callPause=pause;}
+void musicVoice(bool active){voiceActive=active;}
 void musicCancelAlert(){cancelAlert=true;}
-void musicStop(){stopping=true;paused=false;ampWanted=false;if(jobs)xQueueReset(jobs);}
+void musicStop(){stopping=true;paused=false;ampWanted=false;if(jobs)xQueueReset(jobs);alertPending=false;}
 void musicPause(){if(musicStatus().busy)paused=!paused.load();}
 void musicVolume(int v){volume=std::max(0,std::min(100,v));}
 void musicRepeat(bool r){repeatTrack=r;}
-void musicTick(){bool wanted=ampWanted.load()&&!stopping.load();if(wanted!=ampOn&&mp24::audioEnable(wanted))ampOn=wanted;}
+void musicTick(){bool wanted=voiceActive.load()||(ampWanted.load()&&!stopping.load());if(wanted!=ampOn&&mp24::audioEnable(wanted))ampOn=wanted;}
 bool musicNext(int direction){
  auto s=musicStatus();if(s.busy||!*s.path)return false;String folder=s.path;int slash=folder.lastIndexOf('/');folder=slash<=0?"/":folder.substring(0,slash);
  File dir=SD.open(folder);if(!dir||!dir.isDirectory())return false;String first,last,previous,chosen;bool found=false;unsigned count=0;

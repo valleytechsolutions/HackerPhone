@@ -60,10 +60,11 @@ Request encodeSms(const char* destination,const char* utf8,SmsPdu& out) {
   return Request::Accepted;
 }
 
-bool PhoneCore::busy() const { return active_!=Cmd::None||settling_||initStep_<5; }
+bool PhoneCore::busy() const { return suspended_||active_!=Cmd::None||settling_||initStep_<5; }
 void PhoneCore::error(const char* text){copy(state_.error,sizeof(state_.error),text);}
 void PhoneCore::begin(uint32_t now) {
-  state_={};active_=Cmd::None;started_=true;initStep_=0;pollStep_=0;
+  auto previousSms=state_.smsOutcome;state_={};state_.smsOutcome=previousSms==Outcome::Pending?Outcome::Uncertain:previousSms;
+  active_=Cmd::None;started_=true;initStep_=0;pollStep_=0;recoverAllowed_=true;
   lineSize_=0;discard_=false;settling_=false;pollAt_=now;tick(now);
 }
 bool PhoneCore::command(Cmd kind,const char* text,uint32_t now,uint32_t timeout) {
@@ -73,15 +74,48 @@ bool PhoneCore::command(Cmd kind,const char* text,uint32_t now,uint32_t timeout)
   if(len<0||size_t(len)>=sizeof(buffer)||!transport_.write(buffer,size_t(len))){finish(false,now,"UART write failed");return false;}
   return true;
 }
+Request PhoneCore::inspect(const char* text,uint32_t now){
+  static const char* queries[]={"AT","ATI","AT+CGMR","AT+CFUN?","AT+CPIN?","AT+CEREG?","AT+CREG?","AT+CGREG?","AT+CSQ","AT+COPS?","AT+CGATT?","AT+CGDCONT?","AT+QNWINFO","AT+QENG=\"servingcell\"","AT+QCFG=\"nwscanmode\"","AT+QCFG=\"band\"","AT+QCFG=\"ims\"","AT+QMBNCFG=\"List\"","AT+QIACT?","AT+QGPS?","AT+QGPSLOC?","AT+CCLK?","AT+QDAI?","AT+QDAI=?","AT+QAUDMOD?","AT+CEER","AT+CIREG?","AT+QGPSLOC=2"};
+  bool allowed=false;for(const char* query:queries)if(text&&!strcmp(text,query)){allowed=true;break;}
+  if(!allowed)return Request::Invalid;
+  return diagnosticCommand(text,now);
+}
+Request PhoneCore::configure(const char* setting,uint32_t now){
+  if(!setting)return Request::Invalid;
+  struct Setting {const char* name;const char* command;};
+  static const Setting settings[]={
+    {"AUTO","AT+QCFG=\"nwscanmode\",0,1"},
+    {"LTE","AT+QCFG=\"nwscanmode\",3,1"},
+    {"MINT","AT+CGDCONT=1,\"IPV4V6\",\"Wholesale\""},
+    {"IMS_ON","AT+QCFG=\"ims\",1"},
+    {"IMS_DEFAULT","AT+QCFG=\"ims\",0"},
+    {"RESTART","AT+CFUN=1,1"},
+    {"GPS_ON","AT+QGPS=1"},
+    {"GPS_OFF","AT+QGPSEND"},
+    {"PCM256","AT+QDAI=1,1,0,1,0,0,1,1"},
+    {"PCM2048","AT+QDAI=1,1,0,4,0,0,1,1"},
+    {"PCM_TONE","AT+QLDTMF=10,\"1\""},
+    {"PCM1024","AT+QDAI=1,1,0,3,0,0,1,1"},
+    {"PCM16K","AT+QDAI=1,1,0,4,0,1,1,1"}
+  };
+  for(const auto& s:settings)if(!strcmp(setting,s.name))return diagnosticCommand(s.command,now,15000);
+  return Request::Invalid;
+}
+Request PhoneCore::diagnosticCommand(const char* text,uint32_t now,uint32_t timeout){
+  if(busy()||state_.phonePriority())return Request::Busy;
+  diagnostic_={};copy(diagnostic_.command,sizeof(diagnostic_.command),text);diagnostic_.outcome=Outcome::Pending;
+  return command(Cmd::Diagnostic,text,now,timeout)?Request::Accepted:Request::Invalid;
+}
 void PhoneCore::tick(uint32_t now) {
-  if(!started_)return;
+  if(!started_||suspended_)return;
   if(active_!=Cmd::None) {
     if(uint32_t(now-sentAt_)>=timeoutMs_){++state_.timeouts;abort(now,"Modem response timeout",active_==Cmd::SmsBody);}
     return;
   }
   if(settling_) {
-    // A timeout leaves the AT response stream unsynchronised. Stay offline until
-    // the board/user explicitly starts a new session; a late OK cannot ack a send.
+    // Recover with a tagged read-only response. Never replay a call or SMS,
+    // and do not let an old bare OK acknowledge the new session.
+    if(recoverAllowed_&&uint32_t(now-settleAt_)>=5000){settling_=false;resyncSeen_=false;command(Cmd::Resync,"AT+CMEE?",now,2000);}
     return;
   }
   if(initStep_<5) {
@@ -132,16 +166,19 @@ void PhoneCore::abort(uint32_t now,const char* reason,bool uncertain) {
   Cmd previous=active_;
   if(previous==Cmd::SmsPrompt){const char escape=27;transport_.write(&escape,1);}
   finish(false,now,reason);
+  if(previous==Cmd::Diagnostic)diagnostic_.outcome=Outcome::TimedOut;
   if(previous==Cmd::SmsBody||previous==Cmd::SmsPrompt||previous==Cmd::SmsMode)
     state_.smsOutcome=uncertain?Outcome::Uncertain:Outcome::Failed;
   settling_=true;settleAt_=now;state_.online=false;
 }
 void PhoneCore::finish(bool success,uint32_t now,const char* reason) {
   Cmd completed=active_;active_=Cmd::None;
+  if(completed==Cmd::Resync){if(success){state_.online=true;initStep_=1;pollAt_=now;error("");}else{settling_=true;settleAt_=now;}return;}
+  if(completed==Cmd::Diagnostic)diagnostic_.outcome=success?Outcome::Accepted:Outcome::Failed;
   if(reason)error(reason);
   if(completed==Cmd::Probe)state_.online=success;
   if(completed>=Cmd::Probe&&completed<=Cmd::SmsNotice) {
-    if(!success&&completed==Cmd::Probe){settling_=true;return;}
+    if(!success&&completed==Cmd::Probe){settling_=true;settleAt_=now;return;}
     ++initStep_;
     if(initStep_==5){pollAt_=now-30000u;}
   }
@@ -180,10 +217,11 @@ void PhoneCore::feed(const uint8_t* data,size_t length,uint32_t now) {
   }
 }
 void PhoneCore::line(const char* text,uint32_t now) {
+  if(active_==Cmd::Diagnostic){size_t n=strlen(diagnostic_.reply),length=strlen(text);if(n+length+2<sizeof(diagnostic_.reply)){memcpy(diagnostic_.reply+n,text,length);diagnostic_.reply[n+length]='\n';diagnostic_.reply[n+length+1]=0;}else diagnostic_.truncated=true;}
   if(!strcmp(text,"RDY")||!strcmp(text,"POWERED DOWN")) {
     if(active_!=Cmd::None)abort(now,"Modem restarted",active_==Cmd::SmsBody);
-    state_.online=false;state_.sim=Sim::Unknown;state_.registration=0;state_.call=Call::Idle;
-    state_.caller[0]=0;settling_=true;return;
+    state_.online=false;state_.sim=Sim::Unknown;state_.registration=state_.circuitRegistration=state_.packetRegistration=0;state_.call=Call::Idle;
+    state_.caller[0]=0;settling_=true;settleAt_=now;recoverAllowed_=!strcmp(text,"RDY");return;
   }
   if(!strcmp(text,"RING")){state_.call=Call::Ringing;return;}
   if(!strcmp(text,"NO CARRIER")||!strcmp(text,"BUSY")||!strcmp(text,"NO ANSWER")){
@@ -207,13 +245,13 @@ void PhoneCore::line(const char* text,uint32_t now) {
     }
     return;
   }
-  if(prefix(text,"+CEREG:")||prefix(text,"+CREG:")) {
+  if(prefix(text,"+CEREG:")||prefix(text,"+CREG:")||prefix(text,"+CGREG:")) {
     const char* p=strchr(text,':')+1;int first=0,second=0;const char* end=nullptr;
     if(number(p,first,&end)){
       while(*end==' ')++end;
       // Query response <n>,<stat>; URC <stat>,"tac",... has a quoted second item.
       if(*end==','&&number(end+1,second))first=second;
-      if(first<=5)state_.registration=uint8_t(first);
+      if(first<=10){if(prefix(text,"+CEREG:"))state_.registration=uint8_t(first);else if(prefix(text,"+CGREG:"))state_.packetRegistration=uint8_t(first);else state_.circuitRegistration=uint8_t(first);}
     }return;
   }
   if(prefix(text,"+CSQ:")){int r=99;if(number(text+5,r)){state_.signalKnown=r<=31;state_.signalDbm=state_.signalKnown?int16_t(-113+2*r):-127;}return;}
@@ -222,6 +260,7 @@ void PhoneCore::line(const char* text,uint32_t now) {
     if(sscanf(text+6," %d,%d,%d,%d,%d",&id,&dir,&status,&mode,&multi)==5&&id>0&&mode==0&&status>=0&&status<=5){
       const Call states[]={Call::Active,Call::Held,Call::Dialing,Call::Alerting,Call::Ringing,Call::Ringing};
       state_.call=states[status];callSeen_=true;
+      const char* quote=strchr(text,'"');if(quote){const char* end=strchr(quote+1,'"');if(end&&end-quote-1>0&&size_t(end-quote-1)<sizeof(state_.caller)){char caller[24]{};memcpy(caller,quote+1,end-quote-1);if(validNumber(caller))copy(state_.caller,sizeof(state_.caller),caller);}}
     }return;
   }
   if(prefix(text,"+CMTI:")) {
@@ -238,6 +277,7 @@ void PhoneCore::line(const char* text,uint32_t now) {
   if(!strcmp(text,"ERROR")||prefix(text,"+CME ERROR:")||prefix(text,"+CMS ERROR:")){
     if(active_!=Cmd::None)finish(false,now,text);return;
   }
-  if(!strcmp(text,"OK")&&active_!=Cmd::None)finish(true,now);
+  if(prefix(text,"+CMEE:")&&active_==Cmd::Resync){int mode;if(number(text+6,mode)&&mode<=2)resyncSeen_=true;return;}
+  if(!strcmp(text,"OK")&&active_!=Cmd::None&&(active_!=Cmd::Resync||resyncSeen_))finish(true,now);
 }
 }

@@ -23,9 +23,9 @@ The original 4 MB flash has been saved privately before any replacement. This bo
 
 Actual 160×128 framebuffer captures from the engineering sample, displayed at 2× size.
 
-## Current engineering build: 0.5
+## Current engineering build: 0.6 preview
 
-This update adds an SD MP3 player, retro RTTTL notifications, side volume controls,
+The 0.5 foundation provides an SD MP3 player, retro RTTTL notifications, side volume controls,
 keypad lock/power-off handling and eight configurable notification LEDs. It also adds
 recon missions, editable SSID lists, Marauder AP JSON interchange, marked target lists,
 radio MAC settings and an SD file manager. See [daily controls and audio](docs/DAILY-USE.md)
@@ -51,7 +51,17 @@ and [toolkit workflows](docs/TOOLKIT.md).
 - **24 Wi-Fi/BLE transmission modes**, manual targets and 16-entry AP/client lists. Captured-beacon cloning preserves security information; SAE supports group-19 anti-clogging token retries. These are experimental capabilities, not a claim that every peer is affected.
 - **Connected network tools:** saved Wi-Fi profile, ping/ARP/TCP scans, hotspot and a local SD-backed captive portal. Saved observations reload as stale, and saved SSIDs can become a streamed beacon playlist.
 - **Tracker controls:** AirTag, Find My and DULT sound requests; a separately reviewed, timed Find My live sweep; legacy random-address replay. Sound writes are verified against an owned laptop fixture, not an audible tracker.
-- The [94-mode Marauder mapping](docs/MARAUDER-SCOPE.md) records implemented paths, experimental subsets and missing capabilities, plus auxiliary workflows. GPS-dependent modes, OTA/SD self-updates, SPIFFS restore, peer-effect validation, cellular voice audio and SMS inbox remain open. The on-screen dial action remains gated until its voice audio path works.
+- The [94-mode Marauder mapping](docs/MARAUDER-SCOPE.md) records implemented paths, experimental subsets and missing capabilities, plus auxiliary workflows. GPS-dependent modes, OTA/SD self-updates, SPIFFS restore, peer-effect validation, long-duration cellular validation and SMS inbox remain open. Live dial/answer/hangup and a PCM voice bridge are available in the 0.6 engineering preview; the owner confirmed two-way call audio.
+
+## 0.6 cellular preview
+
+Mint LTE registration and internet access are now measured on this sample,
+with two-way call audio confirmed using the corrected 16 kHz PCM bridge.
+Settings / Cellular / 4G hotspot can share that connection over a password-protected
+Wi-Fi network. A laptop completed DHCP, cellular DNS and HTTP traffic through it.
+See [cellular setup and controls](docs/CELLULAR.md). The 64 GB SD card mounts and
+passes a write/read check; directory loading is incremental and text previews page
+through files. Imported RTTTL supports up to 1,024 notes and ten minutes.
 
 ## Build and test
 
@@ -79,14 +89,14 @@ Local recovery images, captures and toolchains are excluded from Git. CI checks 
 
 ## Controls
 
-Joystick or A opens a menu item; C returns home and ends active transmissions/GATT connections; B goes back or erases text. Phone number entry uses the numeric keys and `*` for a leading `+`. Messages use traditional multi-tap typing (800 ms between different letters on one key), followed by a review screen. Radar's D button pauses listening. Target details lead to a signal hunt; D opens evidence, raw advertisement, connection and replay tools. A target being viewed is pinned against table eviction so a menu action cannot silently select its replacement. The SD browser previews the first 168 printable bytes and loads 32 entries per page; Left/Right moves between pages.
+Joystick or A opens a menu item; C returns home and ends active transmissions/GATT connections; B goes back or erases text. Phone number entry uses the numeric keys and `*` for a leading `+`. Messages use traditional multi-tap typing (800 ms between different letters on one key), followed by a review screen. Radar's D button pauses listening. Target details lead to a signal hunt; D opens evidence, raw advertisement, connection and replay tools. A target being viewed is pinned against table eviction so a menu action cannot silently select its replacement. The SD browser loads 32 entries per page incrementally; Left/Right moves between directory pages or 168-byte text-preview pages.
 
 Side volume buttons adjust master audio. The red side button taps to lock/unlock and holds for 2.5 seconds to begin shutdown; release it to finish. Music has play/pause, next/previous, stop and repeat controls. [Daily-use controls](docs/DAILY-USE.md) describe saved tones, LED patterns, SD uploads and verification limits.
 
-USB diagnostics and tools are documented in [TOOLKIT.md](docs/TOOLKIT.md). USB commands cannot place calls or send SMS; explicit `GATT`, `LAB`, `ATTACK` and `IR SEND` commands perform their named operations. Full flash backups, private logs, extracted engineering firmware, and radio captures stay in ignored `.work/` or on the device, never in a public repository.
+USB diagnostics and tools are documented in [TOOLKIT.md](docs/TOOLKIT.md). Explicit `PHONE DIAL`, `PHONE ANSWER` and `PHONE HANGUP` commands control live calls; USB does not expose SMS sending; explicit `GATT`, `LAB`, `ATTACK` and `IR SEND` commands perform their named operations. Full flash backups, private logs, extracted engineering firmware, and radio captures stay in ignored `.work/` or on the device, never in a public repository.
 
 ## Verification still required
 
-The user confirmed the panel, navigation, headphone audio, MP3 playback, side volume buttons, red-button lock/shutdown/wake, all eight LEDs and the retro tones. On-device checks verify MP3 decoding during combined scanning, mission logs, file operations and byte-for-byte SPIFFS backup. Battery-only shutdown and long-term use still need physical acceptance; [validation notes](docs/VALIDATION.md) separate measured results from open checks. Cellular registration, calling, voice audio, and SMS delivery require a compatible activated SIM and live testing; none is claimed without that evidence. No SDK or schematic was provided with this engineering sample. Board assignments recovered from its diagnostics/image are documented with their evidence in [hardware notes](docs/MP24-HARDWARE.md).
+The user confirmed the panel, navigation, headphone audio, MP3 playback, side volume buttons, red-button lock/shutdown/wake, all eight LEDs and the retro tones. On-device checks verify MP3 decoding during combined scanning, mission logs, file operations and byte-for-byte SPIFFS backup. Battery-only shutdown and long-term use still need physical acceptance; [validation notes](docs/VALIDATION.md) separate measured results from open checks. Mint LTE registration and cellular internet/hotspot traffic have been measured. Two-way call audio was confirmed by the owner; SMS delivery remains unvalidated; see the latest validation notes. No SDK or schematic was provided with this engineering sample. Board assignments recovered from its diagnostics/image are documented with their evidence in [hardware notes](docs/MP24-HARDWARE.md).
 
 [Credits and licensing](CREDITS.md).

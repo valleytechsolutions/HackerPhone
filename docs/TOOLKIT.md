@@ -80,7 +80,7 @@ Copy `oui.bin` and its generated provenance JSON to `/hackerphone/` on the card 
 | `SDTEST`, `SCREEN`, `RETRYMODEM` | Dedicated SD test, framebuffer capture, or modem-session retry |
 | `LIGHT` | Retry the identified backlight expander and request full brightness |
 
-Radio operations are not queued automatically on boot. Commands do not place calls or send texts. Captures and exported observation lists may contain nearby device identifiers; development outputs remain private and ignored by version control.
+Radio operations are not queued automatically on boot. Explicit `PHONE DIAL`, `PHONE ANSWER` and `PHONE HANGUP` commands control live calls. USB does not expose SMS sending. See [cellular diagnostics and hotspot controls](CELLULAR.md) for the 0.6 commands. Captures and exported observation lists may contain nearby device identifiers; development outputs remain private and ignored by version control.
 
 ## Expanded 0.4 workflows
 
