@@ -1,6 +1,21 @@
-# HackerPhone — MakerPhone 2 engineering port
+# HackerPhone + Hacker Band
 
 Independent MIT firmware for the owner's CircuitMess **MakerPhone 2 / MP24 engineering sample**, maintained in its own [HackerPhone repository](https://github.com/valleytechsolutions/HackerPhone). This is an early hardware bring-up, not a finished Marauder port or a validated daily-use telephone. A web flasher will follow hardware and recovery validation; none is published yet.
+
+**Hacker Band development has started in this same repository** for the owner's
+ESP32-C3 Maker Band. The first milestone provides tested portable clock,
+stopwatch, notification, Matrix rain animation and separate ignore/decline state,
+plus a versioned companion packet envelope and a compile-only C3 target.
+These modules are not yet connected to a band display, RTC or Bluetooth service.
+There is no flashable Maker Band release yet. See the
+[Hacker Band implementation status and pairing design](docs/HACKERBAND.md).
+
+The intended pair is a watch-first wrist companion and a phone that handles
+cellular service and detailed recon. The band will show calls and texts, sync
+its RTC from the phone, and share evidence-labelled nearby-device observations.
+**Ignore** will silence the band while the phone keeps ringing; **Decline** will
+request rejection of that specific incoming call. One future web flasher will
+offer separate, hardware-checked HackerPhone and Hacker Band releases.
 
 The original 4 MB flash has been saved privately before any replacement. This board has an ESP32-S3, 2 MB quad PSRAM, a 160×128 ST7735 panel, 23 keys, a Quectel EG91-NAX modem, and a working SD card under its original firmware. Original Ringo firmware targets different hardware.
 
@@ -42,13 +57,18 @@ and [toolkit workflows](docs/TOOLKIT.md).
 
 Use Python 3.12 in a virtual environment and install `python -m pip install -r requirements-dev.txt`. This includes **pioarduino Core 6.2.0**, required by the pinned ESP32 platform; it provides the `platformio` Python module and `pio` command. The recipe also pins TFT_eSPI and NimBLE. `python tools/test_core.py` runs native tests without opening a serial port. `python -m platformio run -e mp24_sample` builds the engineering image.
 
+`python -m platformio run -e hackerband_core` compiles the portable watch services
+for ESP32-C3. This target intentionally has no peripheral pin assignments and
+blocks PlatformIO upload/erase targets until the actual Maker Band hardware and
+recovery procedure are established. Do not manually flash its generated image.
+
 The partition file matches this sample's saved layout. Development flashing must write **only the application at `0x10000`**, after verifying the connected chip, flash size, and recovery copy. Never use Ringo binaries, erase-flash, or the automatically generated `firmware.factory.bin` on this sample: its generic boot-app offset overlaps the saved NVS layout. The development procedure preserves the bootloader, partition table, NVS and SPIFFS. Normal runtime may update radio calibration/NVS and crash diagnostics. SD logging creates files only inside `/hackerphone`; no formatting is performed.
 
 ## Repository layout
 
 | Directory | Contents |
 |---|---|
-| `firmware/` | Phone, display, keypad, recon, storage, BLE explorer and UI services |
+| `firmware/` | Phone services and the initial portable Hacker Band core |
 | `assets/` | Owner-supplied BWM boot and VTS wallpaper originals |
 | `tools/` | Native test runner, asset conversion, vendor database builder and USB exporter |
 | `tests/` | Synthetic phone, protocol, storage and tracking checks |

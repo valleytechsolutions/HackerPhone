@@ -12,3 +12,6 @@ exe=out/('core_test.exe' if sys.platform=='win32' else 'core_test')
 sources=[str(root/'firmware/src'/s) for s in ('rtttl.cpp','device_controls.cpp','phone_core.cpp','recon_core.cpp','scan_profiles.cpp','eapol_tracker.cpp','network_format.cpp','list_format.cpp','capture_format.cpp','vendor_db.cpp','lab_format.cpp','attack_frames.cpp','ir_format.cpp')]
 subprocess.run(cxx+['-std=c++17','-O1','-Wall','-Wextra','-UNDEBUG']+inc+sources+[str(root/'tests/core_test.cpp'),str(obj),'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)
+band_exe=out/('band_test.exe' if sys.platform=='win32' else 'band_test')
+subprocess.run(cxx+['-std=c++17','-O1','-Wall','-Wextra','-UNDEBUG']+inc+[str(root/'firmware/src/band_core.cpp'),str(root/'tests/band_test.cpp'),'-o',str(band_exe)],check=True)
+subprocess.run([str(band_exe)],check=True)
